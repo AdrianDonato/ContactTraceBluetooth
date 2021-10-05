@@ -40,7 +40,15 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         scanButton = findViewById(R.id.scan_button)
-        scanButton.setOnClickListener{startBleScan()}
+
+        //isScanning is to check if ble is active
+        scanButton.setOnClickListener{
+            if(isScanning) {
+                stopBleScan()
+            } else {
+                startBleScan()
+            }
+        }
     }
 
 
@@ -121,6 +129,7 @@ class MainActivity : AppCompatActivity() {
 
     /* BLE Scanner : Should be separate kt file? */
     /* 10/5/2021 */
+    // can find a ble device but not sure if this is accurate
     private val bleScanner by lazy {
         bluetoothAdapter.bluetoothLeScanner
     }
@@ -142,6 +151,24 @@ class MainActivity : AppCompatActivity() {
         }
         else { /* TODO: Actually perform scan */
             bleScanner.startScan(null, scanSettings, scanCallback)
+            isScanning = true
         }
     }
+
+    //10/5/21 7PM - Stopping BLE Scan
+
+    //sets button text to stop scan while app is currently scanning
+    private var isScanning = false
+        set (value) {
+            field = value
+            runOnUiThread{scanButton.text = if (value) "Stop Scan" else "Scan Bluetooth"}
+        }
+
+    //stops scanning of ble devices
+    private fun stopBleScan(){
+        bleScanner.stopScan(scanCallback)
+        isScanning = false
+    }
+
+
 }
