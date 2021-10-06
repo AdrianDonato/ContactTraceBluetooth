@@ -45,6 +45,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         scanButton = findViewById(R.id.scan_button)
 
+        setupRecyclerView()
         //isScanning is to check if ble is active
         scanButton.setOnClickListener{
             if(isScanning) {
@@ -188,9 +189,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     // 10/6/21 6:34PM - Surfacing Scan Results
-    private val results_recyclerView : RecyclerView = findViewById(R.id.scanResult_RecyclerView)
+    //private val results_recyclerView : RecyclerView = findViewById(R.id.scanResult_RecyclerView)
 
     private fun setupRecyclerView() {
+        val results_recyclerView : RecyclerView = findViewById(R.id.scanResult_RecyclerView)
         results_recyclerView.apply {
             adapter = scanResultAdapter
             layoutManager = LinearLayoutManager(
