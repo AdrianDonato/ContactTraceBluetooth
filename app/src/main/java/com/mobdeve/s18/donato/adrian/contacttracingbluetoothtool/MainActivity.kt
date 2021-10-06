@@ -170,5 +170,11 @@ class MainActivity : AppCompatActivity() {
         isScanning = false
     }
 
+    // 10/5/21 7:25PM - Surfacing Scan Results
+
+
+
+
+
 
 }
