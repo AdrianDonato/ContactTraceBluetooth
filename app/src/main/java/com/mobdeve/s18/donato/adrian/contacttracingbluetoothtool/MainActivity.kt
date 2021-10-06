@@ -236,5 +236,9 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
-
+    /*
+    val filter = ScanFilter.Builder().setServiceUuid(
+            ParcelUuid.fromString(UUID.fromString())
+    ).build()
+    */
 }
