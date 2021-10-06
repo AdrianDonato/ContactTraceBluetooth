@@ -18,7 +18,7 @@ class ScanResultAdapter(
             private val onClickListener: (device: ScanResult) -> Unit
     ) : RecyclerView.ViewHolder(view){
         fun bind(result: ScanResult){
-            view.tv_scanResultName.text = result.device.name ?: "Unnamed"
+            view.tv_scanResultName.text = result.device.name ?: result.device.name
             view.tv_scanResultAddress.text = result.device.address
             view.setOnClickListener{ onClickListener.invoke(result)}
         }

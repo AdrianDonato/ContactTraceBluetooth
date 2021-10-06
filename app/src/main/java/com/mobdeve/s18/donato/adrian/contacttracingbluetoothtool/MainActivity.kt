@@ -3,8 +3,7 @@ package com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool
 import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
-import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothManager
+import android.bluetooth.*
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
@@ -208,17 +207,34 @@ class MainActivity : AppCompatActivity() {
             animator.supportsChangeAnimations = false
         }
     }
+
+    //Oct 6 - Bluetooth GATT (Connecting to BLE Device)
     private val scanResults = mutableListOf<ScanResult>()
     private val scanResultAdapter: ScanResultAdapter by lazy {
-        ScanResultAdapter(scanResults) {
-            // TODO: Implement
+        ScanResultAdapter(scanResults) { result ->
+            if(isScanning){stopBleScan()}
+            with(result.device){
+                Log.w("ScanResultAdapter", "Connecting to $address")
+                connectGatt(applicationContext, false, gattCallback)
+            }
         }
     }
 
-
-
-
-
-
+    //connect to a BLE device (di pa natetest rn)
+    private val gattCallback = object : BluetoothGattCallback (){
+        override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
+            super.onConnectionStateChange(gatt, status, newState)
+            val deviceAddress = gatt?.device?.address
+            if(status == BluetoothGatt.GATT_SUCCESS){
+                if(newState == BluetoothProfile.STATE_CONNECTED){
+                    Log.w("BluetoothGattCallback", "Successfully connected to $deviceAddress")
+                    //store bluetooth gatt tabl
+                }
+            } else {
+                Log.w("BluetoothGattCallback", "Error! Encountered $status for $deviceAddress. Disconnecting...")
+                gatt?.close()
+            }
+        }
+    }
 
 }
