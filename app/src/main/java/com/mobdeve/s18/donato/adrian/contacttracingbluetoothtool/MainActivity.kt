@@ -23,7 +23,11 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import androidx.recyclerview.widget.SimpleItemAnimator
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.R
+import kotlinx.android.synthetic.main.activity_main.*
 import java.util.*
 import java.util.Arrays.toString
 import java.util.Objects.toString
@@ -137,21 +141,34 @@ class MainActivity : AppCompatActivity() {
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
             .build()
 
-    private val scanCallback = object : ScanCallback() {
-        override fun onScanResult(callbackType: Int, result: ScanResult) {
-            with(result.device) {
-                Log.i( "Scan Callback","Found BLE device! Name: ${name ?: "Unnamed"}, address: $address")
-            }
-        }
-    }
-
     private fun startBleScan(){
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !isLocationPermissionGranted) {
             requestLocationPermission()
         }
         else { /* TODO: Actually perform scan */
+            scanResults.clear()
+            scanResultAdapter.notifyDataSetChanged()
             bleScanner.startScan(null, scanSettings, scanCallback)
             isScanning = true
+        }
+    }
+    private val scanCallback = object : ScanCallback() {
+        override fun onScanResult(callbackType: Int, result: ScanResult) {
+            val indexQuery = scanResults.indexOfFirst { it.device.address == result.device.address }
+            if (indexQuery != -1) { // A scan result already exists with the same address
+                scanResults[indexQuery] = result
+                scanResultAdapter.notifyItemChanged(indexQuery)
+            } else {
+                with(result.device) {
+                    Log.i("ScanCallback", "Found BLE device! Name: ${name ?: "Unnamed"}, address: $address")
+                }
+                scanResults.add(result)
+                scanResultAdapter.notifyItemInserted(scanResults.size - 1)
+            }
+        }
+
+        override fun onScanFailed(errorCode: Int) {
+            Log.e( "ScanCallback", "onScanFailed: code $errorCode")
         }
     }
 
@@ -170,7 +187,32 @@ class MainActivity : AppCompatActivity() {
         isScanning = false
     }
 
-    // 10/5/21 7:25PM - Surfacing Scan Results
+    // 10/6/21 6:34PM - Surfacing Scan Results
+    private val results_recyclerView : RecyclerView = findViewById(R.id.scanResult_RecyclerView)
+
+    private fun setupRecyclerView() {
+        results_recyclerView.apply {
+            adapter = scanResultAdapter
+            layoutManager = LinearLayoutManager(
+                    this@MainActivity,
+                    RecyclerView.VERTICAL,
+                    false
+            )
+            isNestedScrollingEnabled = false
+        }
+
+        val animator = scanResult_RecyclerView.itemAnimator
+        if (animator is SimpleItemAnimator) {
+            animator.supportsChangeAnimations = false
+        }
+    }
+    private val scanResults = mutableListOf<ScanResult>()
+    private val scanResultAdapter: ScanResultAdapter by lazy {
+        ScanResultAdapter(scanResults) {
+            // TODO: Implement
+        }
+    }
+
 
 
 
