@@ -25,6 +25,7 @@ import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
+import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Bluetooth.BLEAdvertiser
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.R
 import kotlinx.android.synthetic.main.activity_main.*
 import java.util.*
@@ -241,4 +242,13 @@ class MainActivity : AppCompatActivity() {
             ParcelUuid.fromString(UUID.fromString())
     ).build()
     */
+
+    // 10/7/2021 - 10/8/2021
+    // BLEAdvertising
+    private val advertiser = BLEAdvertiser(getString(R.string.ble_uuid))
+
+    private fun startAdvertising(){
+
+    }
+
 }

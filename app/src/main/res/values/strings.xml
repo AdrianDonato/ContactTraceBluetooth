@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Contact Tracing Bluetooth Tool</string>
+    <string name="ble_uuid">61ca2ddb-d5d0-489c-8542-2d1b72e594b4</string>
 </resources>
