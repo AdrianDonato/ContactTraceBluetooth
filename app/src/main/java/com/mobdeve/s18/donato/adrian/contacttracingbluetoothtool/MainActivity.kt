@@ -327,5 +327,5 @@ class MainActivity : AppCompatActivity() {
         shouldBeAdvertising = false
         handler.removeCallbacksAndMessages(null)
     }
-
+//
 }
