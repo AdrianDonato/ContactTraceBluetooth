@@ -37,13 +37,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var advertiseButton: Button
     private var serviceUUID: String by Delegates.notNull()
 
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         scanButton = findViewById(R.id.scan_button)
         advertiseButton = findViewById(R.id.advertise_button)
         setupRecyclerView()
+        //serviceUUID = getString(R.string.ble_uuid)
+        pUuid = ParcelUuid(UUID.fromString(getString(R.string.ble_uuid)))
         //isScanning is to check if ble is active
         scanButton.setOnClickListener{
             if(isScanning) {
@@ -55,6 +56,7 @@ class MainActivity : AppCompatActivity() {
         //Add listener to advertise button
         advertiseButton.setOnClickListener{
             if(isAdvertising){
+                Log.d("BLEAdvertiser", "Stopped Advertising")
                 stopAdvertising()
             } else{
                 startAdvertising(180000)
@@ -264,10 +266,42 @@ class MainActivity : AppCompatActivity() {
     private var callback: AdvertiseCallback = object: AdvertiseCallback(){
         override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
             super.onStartSuccess(settingsInEffect)
+            Log.d("BLEAdvertiser", "Advertising successful")
             isAdvertising = true
         }
         override fun onStartFailure(errorCode: Int) {
             super.onStartFailure(errorCode)
+            var reason: String
+
+            when (errorCode) {
+                ADVERTISE_FAILED_ALREADY_STARTED -> {
+                    reason = "ADVERTISE_FAILED_ALREADY_STARTED"
+                    isAdvertising = true
+                }
+                ADVERTISE_FAILED_FEATURE_UNSUPPORTED -> {
+                    reason = "ADVERTISE_FAILED_FEATURE_UNSUPPORTED"
+                    isAdvertising = false
+                }
+                ADVERTISE_FAILED_INTERNAL_ERROR -> {
+                    reason = "ADVERTISE_FAILED_INTERNAL_ERROR"
+                    isAdvertising = false
+                }
+                ADVERTISE_FAILED_TOO_MANY_ADVERTISERS -> {
+                    reason = "ADVERTISE_FAILED_TOO_MANY_ADVERTISERS"
+                    isAdvertising = false
+                }
+                ADVERTISE_FAILED_DATA_TOO_LARGE -> {
+                    reason = "ADVERTISE_FAILED_DATA_TOO_LARGE"
+                    isAdvertising = false
+                    charLength--
+                }
+
+                else -> {
+                    reason = "UNDOCUMENTED"
+                }
+            }
+
+            Log.d("BLEAdvertiser", "Advertising failed: " + reason)
         }
     }
 
@@ -281,7 +315,7 @@ class MainActivity : AppCompatActivity() {
             .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
             .setConnectable(false)
             .build()
-    var pUuid = ParcelUuid(UUID.fromString(serviceUUID))
+    var pUuid: ParcelUuid by Delegates.notNull()
 
     var data: AdvertiseData? = null
 
@@ -293,7 +327,7 @@ class MainActivity : AppCompatActivity() {
         data = AdvertiseData.Builder()
                 .setIncludeDeviceName(true)
                 .addServiceUuid(pUuid)
-                .addServiceData(pUuid, "Data".toByteArray(Charset.forName("UTF-8")))
+                //.addServiceData(pUuid, "Data".toByteArray(Charset.forName("UTF-8")))
                 .build()
         try {
             Log.d("BLEAdvertiser", "Start advertising")
@@ -314,6 +348,7 @@ class MainActivity : AppCompatActivity() {
     fun startAdvertising(timeoutInMillis: Long) {
         startAdvertisingLegacy(timeoutInMillis)
         shouldBeAdvertising = true
+        Log.d("BLEAdvertiser", "Advertising starting..")
     }
 
     fun stopAdvertising() {
