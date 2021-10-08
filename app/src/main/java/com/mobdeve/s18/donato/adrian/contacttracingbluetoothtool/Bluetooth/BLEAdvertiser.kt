@@ -7,6 +7,7 @@ import android.bluetooth.le.AdvertiseSettings
 import android.bluetooth.le.AdvertiseData
 import android.bluetooth.le.AdvertiseCallback
 import android.os.Handler
+import android.os.Looper
 
 import android.os.ParcelUuid
 import android.util.Log
@@ -30,7 +31,8 @@ class BLEAdvertiser constructor(val serviceUUID: String) {
 
     var isAdvertising = false
     var shouldBeAdvertising = false
-    var handler = Handler()
+
+    var handler = Handler(Looper.getMainLooper())
 
     var settings = AdvertiseSettings.Builder()
             .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_POWER)

@@ -4,18 +4,13 @@ import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
 import android.bluetooth.*
-import android.bluetooth.le.ScanCallback
-import android.bluetooth.le.ScanFilter
-import android.bluetooth.le.ScanResult
-import android.bluetooth.le.ScanSettings
+import android.bluetooth.le.*
 import android.content.Context
 import android.content.DialogInterface
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.os.Build
+import android.os.*
 import androidx.appcompat.app.AppCompatActivity
-import android.os.Bundle
-import android.os.ParcelUuid
 import android.util.Log
 import android.widget.Button
 import android.widget.Toast
@@ -28,15 +23,18 @@ import androidx.recyclerview.widget.SimpleItemAnimator
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Bluetooth.BLEAdvertiser
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.R
 import kotlinx.android.synthetic.main.activity_main.*
+import java.nio.charset.Charset
 import java.util.*
 import java.util.Arrays.toString
 import java.util.Objects.toString
 import kotlin.properties.Delegates
 
+
 private const val LOCATION_PERMISSION_REQUEST_CODE = 2
 
 class MainActivity : AppCompatActivity() {
     private lateinit var scanButton : Button
+    private lateinit var advertiseButton: Button
     private var serviceUUID: String by Delegates.notNull()
 
 
@@ -44,7 +42,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         scanButton = findViewById(R.id.scan_button)
-
+        advertiseButton = findViewById(R.id.advertise_button)
         setupRecyclerView()
         //isScanning is to check if ble is active
         scanButton.setOnClickListener{
@@ -52,6 +50,14 @@ class MainActivity : AppCompatActivity() {
                 stopBleScan()
             } else {
                 startBleScan()
+            }
+        }
+        //Add listener to advertise button
+        advertiseButton.setOnClickListener{
+            if(isAdvertising){
+                stopAdvertising()
+            } else{
+                startAdvertising(180000)
             }
         }
     }
@@ -139,7 +145,7 @@ class MainActivity : AppCompatActivity() {
         bluetoothAdapter.bluetoothLeScanner
     }
     private val scanSettings = ScanSettings.Builder()
-            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+            .setScanMode(ScanSettings.SCAN_MODE_LOW_POWER)
             .build()
 
     private fun startBleScan(){
@@ -147,9 +153,16 @@ class MainActivity : AppCompatActivity() {
             requestLocationPermission()
         }
         else { /* TODO: Actually perform scan */
+            val filter = ScanFilter.Builder().setServiceUuid(
+                    ParcelUuid(UUID.fromString(getString(R.string.ble_uuid)))
+            ).build()
+
+            val filters: ArrayList<ScanFilter> = ArrayList()
+            filters.add(filter)
+
             scanResults.clear()
             scanResultAdapter.notifyDataSetChanged()
-            bleScanner.startScan(null, scanSettings, scanCallback)
+            bleScanner.startScan(filters, scanSettings, scanCallback)
             isScanning = true
         }
     }
@@ -237,18 +250,82 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
-    /*
-    val filter = ScanFilter.Builder().setServiceUuid(
-            ParcelUuid.fromString(UUID.fromString())
-    ).build()
-    */
+
+
 
     // 10/7/2021 - 10/8/2021
     // BLEAdvertising
-    private val advertiser = BLEAdvertiser(getString(R.string.ble_uuid))
+    //private val advertiser = BLEAdvertiser(getString(R.string.ble_uuid))
 
-    private fun startAdvertising(){
+    private var advertiser: BluetoothLeAdvertiser? = BluetoothAdapter.getDefaultAdapter().getBluetoothLeAdvertiser()
+    private var charLength = 3
 
+
+    private var callback: AdvertiseCallback = object: AdvertiseCallback(){
+        override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
+            super.onStartSuccess(settingsInEffect)
+            isAdvertising = true
+        }
+        override fun onStartFailure(errorCode: Int) {
+            super.onStartFailure(errorCode)
+        }
+    }
+
+    var isAdvertising = false
+    var shouldBeAdvertising = false
+
+    var handler = Handler(Looper.getMainLooper())
+
+    var settings = AdvertiseSettings.Builder()
+            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_POWER)
+            .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
+            .setConnectable(false)
+            .build()
+    var pUuid = ParcelUuid(UUID.fromString(serviceUUID))
+
+    var data: AdvertiseData? = null
+
+    fun startAdvertisingLegacy(timeoutInMillis: Long){
+        val randomUUID = UUID.randomUUID().toString()
+        val finalString = randomUUID.substring(randomUUID.length - charLength, randomUUID.length)
+        val serviceDataByteArray = finalString.toByteArray()
+
+        data = AdvertiseData.Builder()
+                .setIncludeDeviceName(true)
+                .addServiceUuid(pUuid)
+                .addServiceData(pUuid, "Data".toByteArray(Charset.forName("UTF-8")))
+                .build()
+        try {
+            Log.d("BLEAdvertiser", "Start advertising")
+            advertiser = advertiser ?: BluetoothAdapter.getDefaultAdapter().bluetoothLeAdvertiser
+            advertiser?.startAdvertising(settings, data, callback)
+        } catch (e: Throwable) {
+            Log.e("BLEAdvertiser", "Failed to start advertising legacy: ${e.message}")
+        }
+
+        /*
+        if (!infiniteAdvertising) {
+            handler.removeCallbacksAndMessages(stopRunnable)
+            handler.postDelayed(stopRunnable, timeoutInMillis)
+        }
+         */
+    }
+
+    fun startAdvertising(timeoutInMillis: Long) {
+        startAdvertisingLegacy(timeoutInMillis)
+        shouldBeAdvertising = true
+    }
+
+    fun stopAdvertising() {
+        try {
+            Log.d("BLEAdvertiser", "Stop Advertising")
+            advertiser?.stopAdvertising(callback)
+        } catch (e: Throwable) {
+            Log.d("BLEAdvertiser", "Failed to stop advertising: ${e.message}")
+
+        }
+        shouldBeAdvertising = false
+        handler.removeCallbacksAndMessages(null)
     }
 
 }
