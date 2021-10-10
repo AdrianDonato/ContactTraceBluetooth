@@ -8,6 +8,7 @@ import android.bluetooth.le.*
 import android.content.Context
 import android.content.DialogInterface
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.*
 import androidx.appcompat.app.AppCompatActivity
@@ -37,14 +38,26 @@ class MainActivity : AppCompatActivity() {
     private lateinit var advertiseButton: Button
     private var serviceUUID: String by Delegates.notNull()
 
+    //bluetooth service
+    private var bluetoothManager: BluetoothManager by Delegates.notNull()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        //init bluetooth manager
+        bluetoothManager = getSystemService(BLUETOOTH_SERVICE) as BluetoothManager
+
         scanButton = findViewById(R.id.scan_button)
         advertiseButton = findViewById(R.id.advertise_button)
         setupRecyclerView()
         //serviceUUID = getString(R.string.ble_uuid)
         pUuid = ParcelUuid(UUID.fromString(getString(R.string.ble_uuid)))
+
+        var broadcastFilter = IntentFilter()
+        broadcastFilter.addAction("BluetoothGattCallback")
+
+
         //isScanning is to check if ble is active
         scanButton.setOnClickListener{
             if(isScanning) {
@@ -148,7 +161,7 @@ class MainActivity : AppCompatActivity() {
     }
     private val scanSettings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_POWER)
-            //.setReportDelay(400)
+            .setReportDelay(0)
             .build()
 
     private fun startBleScan(){
@@ -204,6 +217,9 @@ class MainActivity : AppCompatActivity() {
         isScanning = false
     }
 
+    //bluetoooth gatt server
+    private lateinit var bleServer: BluetoothGattServer
+
     // 10/6/21 6:34PM - Surfacing Scan Results
     //private val results_recyclerView : RecyclerView = findViewById(R.id.scanResult_RecyclerView)
 
@@ -232,30 +248,49 @@ class MainActivity : AppCompatActivity() {
             if(isScanning){stopBleScan()}
             with(result.device){
                 Log.w("ScanResultAdapter", "Connecting to $address")
-                connectGatt(applicationContext, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
+                //result.device.connectGatt(applicationContext, false, gattServerCallback, BluetoothDevice.TRANSPORT_LE)
+
+            /*
+                connectGatt(applicationContext,
+                        false,
+                        gattCallback,
+                        BluetoothDevice.TRANSPORT_LE
+                )
+
+                 */
+                //connect(result.device, false)
+                //bleServer?.connect(result.device, false)
+                startServer()
             }
         }
     }
 
-    //connect to a BLE device (di pa natetest rn)
-    private val gattCallback = object : BluetoothGattCallback (){
-        override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
-            super.onConnectionStateChange(gatt, status, newState)
-            val deviceAddress = gatt?.device?.address
 
-            if(status == BluetoothGatt.GATT_SUCCESS){
+
+    //connect to a BLE device (di pa natetest rn)
+  //  private val gattCallback = object : BluetoothGattCallback (){
+    private val gattServerCallback = object : BluetoothGattServerCallback (){
+        override fun onConnectionStateChange(device: BluetoothDevice?, status: Int, newState: Int) {
+           super.onConnectionStateChange(device, status, newState)
+            // super.onConnectionStateChange(gatt, status, newState)
+           // val deviceAddress = gatt?.device?.address
+            Log.w("BluetoothGattCallback", "Conn state changed")
+          //  if(status == BluetoothGatt.GATT_SUCCESS){
                 //if(isAdvertising) {stopAdvertising()}
+                    Log.w("BluetoothGattCallback", "Gatt Connection Successful")
                 if(newState == BluetoothProfile.STATE_CONNECTED){
-                    Log.w("BluetoothGattCallback", "Successfully connected to $deviceAddress")
+                    Log.w("BluetoothGattCallback", "Successfully connected to ${device?.address}")
                     //store bluetooth gatt table
                 } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                    Log.w("BluetoothGattCallback", "Successfully disconnected from $deviceAddress")
-                    gatt?.close()
+                    Log.w("BluetoothGattCallback", "Successfully disconnected from ${device?.address}")
+                    //gatt?.close()
+                } else {
+                    Log.w("BluetoothGattCallback", "State is $newState, Status: $status")
                 }
-            } else {
-                Log.w("BluetoothGattCallback", "Error! Encountered $status for $deviceAddress. Disconnecting...")
-                gatt?.close()
-            }
+          //  } else {
+            //    Log.w("BluetoothGattCallback", "Error! Encountered $status for $deviceAddress. Disconnecting...")
+              //  gatt?.close()
+           // }
 
         }
     }
@@ -324,11 +359,41 @@ class MainActivity : AppCompatActivity() {
     var settings = AdvertiseSettings.Builder()
             .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_POWER)
             .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
-            .setConnectable(false)
+            .setConnectable(true)
             .build()
     var pUuid: ParcelUuid by Delegates.notNull()
 
     var data: AdvertiseData? = null
+    var scanResponseData: AdvertiseData? = null
+
+    //starts ble gatt server
+    fun startServer(): Boolean{
+        var startBool = false
+        Log.w("BLEGattServer", "Starting server")
+        bleServer = bluetoothManager.openGattServer(applicationContext, gattServerCallback)
+        bleServer?.let{
+            it.clearServices()
+            startBool = true
+        }
+
+        if(startBool == true){
+            val gattService = BluetoothGattService(UUID.fromString(getString(R.string.ble_uuid)), BluetoothGattService.SERVICE_TYPE_PRIMARY)
+            val gattCharacteristic = BluetoothGattCharacteristic(UUID.fromString(getString(R.string.ble_characuuid)),
+            BluetoothGattCharacteristic.PROPERTY_READ, BluetoothGattCharacteristic.PERMISSION_READ)
+            gattService.addCharacteristic(gattCharacteristic)
+            bleServer.addService(gattService)
+        }
+
+        Log.w("BLEGattServer", "Clear services - $startBool")
+        return startBool
+    }
+
+    fun stopServer(){
+        bleServer?.clearServices()
+        bleServer?.close()
+    }
+
+    //fun addService(service: GattService)
 
     fun startAdvertisingLegacy(timeoutInMillis: Long){
         val randomUUID = UUID.randomUUID().toString()
@@ -340,10 +405,11 @@ class MainActivity : AppCompatActivity() {
                 .addServiceUuid(pUuid)
                 //.addServiceData(pUuid, "Data".toByteArray(Charset.forName("UTF-8")))
                 .build()
+        scanResponseData = AdvertiseData.Builder().addServiceUuid(pUuid).build()
         try {
             Log.d("BLEAdvertiser", "Start advertising")
             advertiser = advertiser ?: BluetoothAdapter.getDefaultAdapter().bluetoothLeAdvertiser
-            advertiser?.startAdvertising(settings, data, callback)
+            advertiser?.startAdvertising(settings, data, scanResponseData, callback)
         } catch (e: Throwable) {
             Log.e("BLEAdvertiser", "Failed to start advertising legacy: ${e.message}")
         }
