@@ -148,6 +148,7 @@ class MainActivity : AppCompatActivity() {
     }
     private val scanSettings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_POWER)
+            //.setReportDelay(400)
             .build()
 
     private fun startBleScan(){
@@ -231,7 +232,7 @@ class MainActivity : AppCompatActivity() {
             if(isScanning){stopBleScan()}
             with(result.device){
                 Log.w("ScanResultAdapter", "Connecting to $address")
-                connectGatt(applicationContext, false, gattCallback)
+                connectGatt(applicationContext, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
             }
         }
     }
@@ -241,15 +242,21 @@ class MainActivity : AppCompatActivity() {
         override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
             super.onConnectionStateChange(gatt, status, newState)
             val deviceAddress = gatt?.device?.address
+
             if(status == BluetoothGatt.GATT_SUCCESS){
+                //if(isAdvertising) {stopAdvertising()}
                 if(newState == BluetoothProfile.STATE_CONNECTED){
                     Log.w("BluetoothGattCallback", "Successfully connected to $deviceAddress")
-                    //store bluetooth gatt tabl
+                    //store bluetooth gatt table
+                } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                    Log.w("BluetoothGattCallback", "Successfully disconnected from $deviceAddress")
+                    gatt?.close()
                 }
             } else {
                 Log.w("BluetoothGattCallback", "Error! Encountered $status for $deviceAddress. Disconnecting...")
                 gatt?.close()
             }
+
         }
     }
 
@@ -306,6 +313,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     var isAdvertising = false
+        set (value) {
+            field = value
+            runOnUiThread{advertiseButton.text = if (value) "Stop Advertising" else "Advertise"}
+        }
     var shouldBeAdvertising = false
 
     var handler = Handler(Looper.getMainLooper())
@@ -325,7 +336,7 @@ class MainActivity : AppCompatActivity() {
         val serviceDataByteArray = finalString.toByteArray()
 
         data = AdvertiseData.Builder()
-                .setIncludeDeviceName(true)
+                .setIncludeDeviceName(false)
                 .addServiceUuid(pUuid)
                 //.addServiceData(pUuid, "Data".toByteArray(Charset.forName("UTF-8")))
                 .build()
@@ -360,6 +371,7 @@ class MainActivity : AppCompatActivity() {
 
         }
         shouldBeAdvertising = false
+        isAdvertising = false
         handler.removeCallbacksAndMessages(null)
     }
 //
