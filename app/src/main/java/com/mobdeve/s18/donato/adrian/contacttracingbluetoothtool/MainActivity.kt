@@ -32,6 +32,7 @@ import kotlin.properties.Delegates
 
 
 private const val LOCATION_PERMISSION_REQUEST_CODE = 2
+private const val GATT_MAX_MTU_SIZE = 517
 
 class MainActivity : AppCompatActivity() {
     private lateinit var scanButton : Button
@@ -64,7 +65,7 @@ class MainActivity : AppCompatActivity() {
                 stopBleScan()
             } else {
                 startBleScan()
-                startServer()
+                //startServer()
             }
         }
         //Add listener to advertise button
@@ -253,54 +254,102 @@ class MainActivity : AppCompatActivity() {
                 Log.w("ScanResultAdapter", "Connecting to $address")
                 //result.device.connectGatt(applicationContext, false, gattServerCallback, BluetoothDevice.TRANSPORT_LE)
 
-            /*
                 connectGatt(applicationContext,
                         false,
                         gattCallback,
                         BluetoothDevice.TRANSPORT_LE
                 )
-
-                 */
-                //connect(result.device, false)
-                //bleServer?.connect(result.device, false)
-                //startServer()
-                bleServer.connect(result.device, false)
             }
         }
     }
 
-
-
-    //connect to a BLE device (di pa natetest rn)
-  //  private val gattCallback = object : BluetoothGattCallback (){
-    private val gattServerCallback = object : BluetoothGattServerCallback (){
-        override fun onConnectionStateChange(device: BluetoothDevice?, status: Int, newState: Int) {
-           super.onConnectionStateChange(device, status, newState)
-            // super.onConnectionStateChange(gatt, status, newState)
-           // val deviceAddress = gatt?.device?.address
-            Log.w("BluetoothGattCallback", "Conn state changed")
-          //  if(status == BluetoothGatt.GATT_SUCCESS){
-                //if(isAdvertising) {stopAdvertising()}
-                    Log.w("BluetoothGattCallback", "Gatt Connection Successful")
+    //acting as central (when scanning)
+    private val gattCallback = object : BluetoothGattCallback (){
+        override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
+            super.onConnectionStateChange(gatt, status, newState)
+            val deviceAddress = gatt?.device?.address
+            if(status == BluetoothGatt.GATT_SUCCESS){
                 if(newState == BluetoothProfile.STATE_CONNECTED){
-                    Log.w("BluetoothGattCallback", "Successfully connected to ${device?.address}")
+                    Log.w("BluetoothGattCallback", "Successfully connected to $deviceAddress")
                     //store bluetooth gatt table
+                    gatt?.requestMtu(512)
+
                 } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                    Log.w("BluetoothGattCallback", "Successfully disconnected from ${device?.address}")
+                    Log.w("BluetoothGattCallback", "Successfully disconnected from $deviceAddress")
                     //gatt?.close()
                 } else {
                     Log.w("BluetoothGattCallback", "State is $newState, Status: $status")
                 }
-          //  } else {
-            //    Log.w("BluetoothGattCallback", "Error! Encountered $status for $deviceAddress. Disconnecting...")
-              //  gatt?.close()
-           // }
+            } else {
+                Log.w("BluetoothGattCallback", "Error! Encountered $status for $deviceAddress. Disconnecting...")
+                gatt?.close()
+            }
+        }
+
+        //check if MTU has changed (added Oct 11)
+        //after connection is successful, change MTU
+        override fun onMtuChanged(gatt: BluetoothGatt?, mtu: Int, status: Int) {
+            super.onMtuChanged(gatt, mtu, status)
+            if(status == BluetoothGatt.GATT_SUCCESS){
+                gatt?.discoverServices()
+                Log.w("BluetoothGattCallback", "Starting service discovery")
+            }
+        }
+
+        //after MTU is changed, check if services are discovered
+        override fun onServicesDiscovered(gatt: BluetoothGatt?, status: Int) {
+            super.onServicesDiscovered(gatt, status)
+            Log.w("BluetoothGattCallback", "Discovered ${gatt?.services?.size} service/s on ${gatt?.device?.address}")
+
+            //get service id from gatt
+            var discService = gatt?.getService(UUID.fromString(getString(R.string.ble_uuid)))
+            discService?.let {
+                //get service characteristic
+                val discCharacteristic = discService.getCharacteristic(UUID.fromString(getString(R.string.ble_characuuid)))
+
+                //if may nadiscover na read characteristic
+                if(discCharacteristic != null){
+                    val readSuccess = gatt?.readCharacteristic(discCharacteristic)
+                    Log.w("BluetoothGattCallback", "Read characteristic of service: $readSuccess")
+                }
+            }
+        }
+
+        override fun onCharacteristicRead(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?, status: Int) {
+            super.onCharacteristicRead(gatt, characteristic, status)
+            if(status == BluetoothGatt.GATT_SUCCESS){
+                Log.w("BluetoothGattCallback", "Characteristic read from ${gatt?.device?.address}: ${characteristic?.getStringValue(0)}")
+            } else {
+                Log.w("BluetoothGattCallback", "Failed to read characteristics from ${gatt?.device?.address}: $status")
+            }
+        }
+    }
+
+    //connect to a BLE device (di pa natetest rn)
+    //callback for gatt server (advertise ata?)
+    private val gattServerCallback = object : BluetoothGattServerCallback (){
+        override fun onConnectionStateChange(device: BluetoothDevice?, status: Int, newState: Int) {
+           super.onConnectionStateChange(device, status, newState)
+
+            Log.w("GattServerCallback", "Conn state changed")
+                    Log.w("GattServerCallback", "Gatt Connection Successful")
+                if(newState == BluetoothProfile.STATE_CONNECTED){
+                    Log.w("GattServerCallback", "Successfully connected to ${device?.address}")
+                    //store bluetooth gatt table
+
+                } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                    Log.w("GattServerCallback", "Successfully disconnected from ${device?.address}")
+                    //gatt?.close()
+                } else {
+                    Log.w("GattServerCallback", "State is $newState, Status: $status")
+                }
 
         }
 
         override fun onCharacteristicReadRequest(device: BluetoothDevice?, requestId: Int, offset: Int, characteristic: BluetoothGattCharacteristic?) {
             super.onCharacteristicReadRequest(device, requestId, offset, characteristic)
             Log.w("BluetoothGattCallback", "Requested read")
+            bleServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
         }
     }
 
