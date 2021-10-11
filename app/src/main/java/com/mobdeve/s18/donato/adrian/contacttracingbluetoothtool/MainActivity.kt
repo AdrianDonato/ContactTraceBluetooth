@@ -53,10 +53,10 @@ class MainActivity : AppCompatActivity() {
         setupRecyclerView()
         //serviceUUID = getString(R.string.ble_uuid)
         pUuid = ParcelUuid(UUID.fromString(getString(R.string.ble_uuid)))
-
+        /*
         var broadcastFilter = IntentFilter()
         broadcastFilter.addAction("BluetoothGattCallback")
-
+        */
 
         //isScanning is to check if ble is active
         scanButton.setOnClickListener{
@@ -64,6 +64,7 @@ class MainActivity : AppCompatActivity() {
                 stopBleScan()
             } else {
                 startBleScan()
+                startServer()
             }
         }
         //Add listener to advertise button
@@ -73,6 +74,7 @@ class MainActivity : AppCompatActivity() {
                 stopAdvertising()
             } else{
                 startAdvertising(180000)
+                startServer()
             }
         }
     }
@@ -245,7 +247,8 @@ class MainActivity : AppCompatActivity() {
     private val scanResults = mutableListOf<ScanResult>()
     private val scanResultAdapter: ScanResultAdapter by lazy {
         ScanResultAdapter(scanResults) { result ->
-            if(isScanning){stopBleScan()}
+            //if(isScanning){stopBleScan()}
+            Toast.makeText(applicationContext, "Connecting to device", Toast.LENGTH_SHORT).show()
             with(result.device){
                 Log.w("ScanResultAdapter", "Connecting to $address")
                 //result.device.connectGatt(applicationContext, false, gattServerCallback, BluetoothDevice.TRANSPORT_LE)
@@ -260,7 +263,8 @@ class MainActivity : AppCompatActivity() {
                  */
                 //connect(result.device, false)
                 //bleServer?.connect(result.device, false)
-                startServer()
+                //startServer()
+                bleServer.connect(result.device, false)
             }
         }
     }
@@ -292,6 +296,11 @@ class MainActivity : AppCompatActivity() {
               //  gatt?.close()
            // }
 
+        }
+
+        override fun onCharacteristicReadRequest(device: BluetoothDevice?, requestId: Int, offset: Int, characteristic: BluetoothGattCharacteristic?) {
+            super.onCharacteristicReadRequest(device, requestId, offset, characteristic)
+            Log.w("BluetoothGattCallback", "Requested read")
         }
     }
 
