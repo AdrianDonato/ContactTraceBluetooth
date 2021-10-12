@@ -14,6 +14,7 @@ import android.os.*
 import androidx.appcompat.app.AppCompatActivity
 import android.util.Log
 import android.widget.Button
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
@@ -22,6 +23,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Bluetooth.BLEAdvertiser
+import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Bluetooth.BluetoothPayload
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.R
 import kotlinx.android.synthetic.main.activity_main.*
 import java.nio.charset.Charset
@@ -37,7 +39,11 @@ private const val GATT_MAX_MTU_SIZE = 517
 class MainActivity : AppCompatActivity() {
     private lateinit var scanButton : Button
     private lateinit var advertiseButton: Button
+    private lateinit var yourID: TextView
     private var serviceUUID: String by Delegates.notNull()
+
+    //variable to be read in text bluetooth read/write
+    private var idNum = (0..100).random().toString()
 
     //bluetooth service
     private var bluetoothManager: BluetoothManager by Delegates.notNull()
@@ -51,6 +57,10 @@ class MainActivity : AppCompatActivity() {
 
         scanButton = findViewById(R.id.scan_button)
         advertiseButton = findViewById(R.id.advertise_button)
+        yourID = findViewById(R.id.hello)
+
+        yourID.setText("Your ID is " + idNum)
+
         setupRecyclerView()
         //serviceUUID = getString(R.string.ble_uuid)
         pUuid = ParcelUuid(UUID.fromString(getString(R.string.ble_uuid)))
@@ -311,6 +321,7 @@ class MainActivity : AppCompatActivity() {
                 if(discCharacteristic != null){
                     val readSuccess = gatt?.readCharacteristic(discCharacteristic)
                     Log.w("BluetoothGattCallback", "Read characteristic of service: $readSuccess")
+
                 }
             }
         }
@@ -319,15 +330,26 @@ class MainActivity : AppCompatActivity() {
             super.onCharacteristicRead(gatt, characteristic, status)
             if(status == BluetoothGatt.GATT_SUCCESS){
                 Log.w("BluetoothGattCallback", "Characteristic read from ${gatt?.device?.address}: ${characteristic?.getStringValue(0)}")
+                //Log.w("BluetoothGattCallback", "Characteristic read from ${gatt?.device?.address}: ${characteristic?.uuid}")
+
             } else {
                 Log.w("BluetoothGattCallback", "Failed to read characteristics from ${gatt?.device?.address}: $status")
             }
         }
     }
 
+    //for bluetoothgattcallback (central)
+    fun ByteArray.toHexString(): String =
+            joinToString(separator = " ", prefix = "0x") { String.format("%02X", it) }
+
     //connect to a BLE device (di pa natetest rn)
     //callback for gatt server (advertise ata?)
     private val gattServerCallback = object : BluetoothGattServerCallback (){
+
+        //create a table which contains id (for testing)
+        val readPayloadMap: MutableMap<String, ByteArray> = HashMap()
+        val writePayloadMap: MutableMap<String, ByteArray> = HashMap()
+
         override fun onConnectionStateChange(device: BluetoothDevice?, status: Int, newState: Int) {
            super.onConnectionStateChange(device, status, newState)
 
@@ -349,7 +371,25 @@ class MainActivity : AppCompatActivity() {
         override fun onCharacteristicReadRequest(device: BluetoothDevice?, requestId: Int, offset: Int, characteristic: BluetoothGattCharacteristic?) {
             super.onCharacteristicReadRequest(device, requestId, offset, characteristic)
             Log.w("BluetoothGattCallback", "Requested read")
-            bleServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
+
+            //this is where we put the data to be sent to the client/central
+            characteristic?.uuid.let{charUUID ->
+                val devAddress = device?.address
+                val base = readPayloadMap.getOrPut(devAddress.toString(), {BluetoothPayload(id = idNum, peripheral = asPeripheralDevice()).getPayload()})
+                Log.w("GattServerCallback", "Payload: " + readPayloadMap.toString())
+                val sentVal = base.copyOfRange(offset, base.size)
+                bleServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, sentVal)
+                /*
+                try {
+                    val sentVal = base.copyOfRange(offset, base.size)
+                    val decodedTest = BluetoothPayload.fromPayload(base)
+                    Log.w("GattServerCallback", "Decoded: " + decodedTest.id)
+                    bleServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, sentVal)
+                } catch (e: Throwable){
+                    Log.w("GattServerCallback", "Payload Failed :( - " + e.localizedMessage)
+                }
+                */
+            }
         }
     }
 
@@ -437,7 +477,8 @@ class MainActivity : AppCompatActivity() {
         if(startBool == true){
             val gattService = BluetoothGattService(UUID.fromString(getString(R.string.ble_uuid)), BluetoothGattService.SERVICE_TYPE_PRIMARY)
             val gattCharacteristic = BluetoothGattCharacteristic(UUID.fromString(getString(R.string.ble_characuuid)),
-            BluetoothGattCharacteristic.PROPERTY_READ, BluetoothGattCharacteristic.PERMISSION_READ)
+            BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_WRITE,
+                    BluetoothGattCharacteristic.PERMISSION_READ or BluetoothGattCharacteristic.PERMISSION_WRITE)
             gattService.addCharacteristic(gattCharacteristic)
             bleServer.addService(gattService)
         }
@@ -497,6 +538,14 @@ class MainActivity : AppCompatActivity() {
         shouldBeAdvertising = false
         isAdvertising = false
         handler.removeCallbacksAndMessages(null)
+    }
+
+    fun asPeripheralDevice(): PeripheralDevice {
+        return PeripheralDevice(Build.MODEL, "SELF")
+    }
+
+    fun asCentralDevice(): CentralDevice {
+        return CentralDevice(Build.MODEL, "SELF")
     }
 //
 }
