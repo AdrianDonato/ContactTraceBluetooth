@@ -24,6 +24,7 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Bluetooth.BLEAdvertiser
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Bluetooth.BluetoothPayload
+import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Bluetooth.BluetoothWritePayload
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.R
 import kotlinx.android.synthetic.main.activity_main.*
 import java.nio.charset.Charset
@@ -275,6 +276,14 @@ class MainActivity : AppCompatActivity() {
 
     //acting as central (when scanning)
     private val gattCallback = object : BluetoothGattCallback (){
+
+        //used to end connection after writing to device
+        fun endConnection(gatt: BluetoothGatt) {
+            Log.w("BluetoothGattCallback", "Ending connection with: ${gatt.device.address}")
+            gatt.disconnect()
+        }
+
+
         override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
             super.onConnectionStateChange(gatt, status, newState)
             val deviceAddress = gatt?.device?.address
@@ -330,10 +339,26 @@ class MainActivity : AppCompatActivity() {
             super.onCharacteristicRead(gatt, characteristic, status)
             if(status == BluetoothGatt.GATT_SUCCESS){
                 Log.w("BluetoothGattCallback", "Characteristic read from ${gatt?.device?.address}: ${characteristic?.getStringValue(0)}")
-                //Log.w("BluetoothGattCallback", "Characteristic read from ${gatt?.device?.address}: ${characteristic?.uuid}")
+
+                var writeData = BluetoothWritePayload(id = idNum, central = asCentralDevice()).getPayload()
+                characteristic?.value = writeData
+
+                val writeSuccess = gatt?.writeCharacteristic(characteristic)
+                Log.w("BluetoothGattback", "Attempt to write characteristic on ${gatt?.device?.address}: $writeSuccess")
 
             } else {
                 Log.w("BluetoothGattCallback", "Failed to read characteristics from ${gatt?.device?.address}: $status")
+            }
+        }
+
+        //checks for the status of writeCharacteristic on onCharacteristicRead
+        override fun onCharacteristicWrite(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?, status: Int) {
+            super.onCharacteristicWrite(gatt, characteristic, status)
+
+            if(status == BluetoothGatt.GATT_SUCCESS){
+                Log.w("BluetoothGattCallback", "Write operation successful!")
+            } else {
+                Log.w("BluetoothGattCallback", "Failed to write: $status")
             }
         }
     }
@@ -349,6 +374,7 @@ class MainActivity : AppCompatActivity() {
         //create a table which contains id (for testing)
         val readPayloadMap: MutableMap<String, ByteArray> = HashMap()
         val writePayloadMap: MutableMap<String, ByteArray> = HashMap()
+        val deviceCharacteristicMap: MutableMap<String, UUID> = HashMap()
 
         override fun onConnectionStateChange(device: BluetoothDevice?, status: Int, newState: Int) {
            super.onConnectionStateChange(device, status, newState)
@@ -370,7 +396,7 @@ class MainActivity : AppCompatActivity() {
 
         override fun onCharacteristicReadRequest(device: BluetoothDevice?, requestId: Int, offset: Int, characteristic: BluetoothGattCharacteristic?) {
             super.onCharacteristicReadRequest(device, requestId, offset, characteristic)
-            Log.w("BluetoothGattCallback", "Requested read")
+            Log.w("GattServerCallback", "Requested read")
 
             //this is where we put the data to be sent to the client/central
             characteristic?.uuid.let{charUUID ->
@@ -379,16 +405,93 @@ class MainActivity : AppCompatActivity() {
                 Log.w("GattServerCallback", "Payload: " + readPayloadMap.toString())
                 val sentVal = base.copyOfRange(offset, base.size)
                 bleServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, sentVal)
-                /*
-                try {
-                    val sentVal = base.copyOfRange(offset, base.size)
-                    val decodedTest = BluetoothPayload.fromPayload(base)
-                    Log.w("GattServerCallback", "Decoded: " + decodedTest.id)
-                    bleServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, sentVal)
-                } catch (e: Throwable){
-                    Log.w("GattServerCallback", "Payload Failed :( - " + e.localizedMessage)
+            }
+        }
+
+        override fun onCharacteristicWriteRequest(device: BluetoothDevice?, requestId: Int, characteristic: BluetoothGattCharacteristic?, preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray?) {
+            super.onCharacteristicWriteRequest(device, requestId, characteristic, preparedWrite, responseNeeded, offset, value)
+
+            if(device == null){
+                Log.w("GattServerCallback", "No device found! Write operation stopped")
+            }
+
+            device?.let {
+                Log.w("GattServerCallback", "onCharacteristicWriteRequest - ${device?.address} - preparedWrite: $preparedWrite")
+                Log.w("GattServerCallback", "onCharacteristicWriteRequest - ${device?.address} - $requestId - $offset")
+
+                //putting value on mutable map payload
+                var valuePassed = ""
+                value?.let {
+                    valuePassed = String(value, Charsets.UTF_8)
                 }
-                */
+                Log.w("GattServerCallback", "onCharacteristicWriteRequest - value passed from ${device?.address} - $valuePassed")
+
+                if(value != null){
+                    var dataBuffer = writePayloadMap[device?.address]
+
+                    if(dataBuffer == null){
+                        dataBuffer = ByteArray(0)
+                    }
+
+                    dataBuffer = dataBuffer.plus(value)
+                    writePayloadMap[device?.address] = dataBuffer
+
+                    Log.w("GattServerCallback", "Accumulated Characteristic: ${String(dataBuffer, Charsets.UTF_8)}")
+
+                    if(preparedWrite && responseNeeded){
+                        Log.w("GattServerCallback", "Sending response offset: ${dataBuffer.size}")
+                        bleServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, dataBuffer.size, value)
+                    }
+                    //check opentrace code if preparedWrite is false
+                    if(!preparedWrite){
+                        Log.w("GattServerCallback", "preparedWrite - $preparedWrite")
+                        saveDataReceived(device)
+                        if(responseNeeded){
+                            bleServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, dataBuffer.size, value)
+                        }
+                    }
+                }
+            }
+        }
+
+        override fun onExecuteWrite(device: BluetoothDevice?, requestId: Int, execute: Boolean) {
+            super.onExecuteWrite(device, requestId, execute)
+            var data = writePayloadMap[device?.address]
+
+            data?.let { dataBuffer ->
+                if(dataBuffer != null){
+                    Log.w("GattServerCallback", "onExecuteWrite - $requestId - ${device?.address}" +
+                            "- ${String(dataBuffer, Charsets.UTF_8)}")
+                    saveDataReceived(device)
+                    bleServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
+                } else {
+                    bleServer.sendResponse(device, requestId, BluetoothGatt.GATT_FAILURE, 0, null)
+                }
+            }
+        }
+
+        fun saveDataReceived(device: BluetoothDevice?){
+            var data = writePayloadMap[device?.address]
+            var charUUID = deviceCharacteristicMap[device?.address]
+
+            charUUID?.let {
+                data?.let {
+                    try{
+                      device.let {
+                          try{
+                              val serializedData = BluetoothWritePayload.fromPayload(data)
+                              Log.w("GattServerCallback", "fromPayload - Received data - ${serializedData.id}")
+                          } catch (e: Throwable) {
+                              Log.w("GattServerCallback", "fromPayload - Failed to process write payload - ${e.message}")
+                          }
+                      }
+                    } catch (e: Throwable) {
+                        Log.w("GattServerCallback", "saveDataReceived - Failed to process write payload - ${e.message}")
+                    }
+                    writePayloadMap.remove(device?.address)
+                    readPayloadMap.remove(device?.address)
+                    deviceCharacteristicMap.remove(device?.address)
+                }
             }
         }
     }
