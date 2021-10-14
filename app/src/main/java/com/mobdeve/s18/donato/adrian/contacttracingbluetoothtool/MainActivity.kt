@@ -408,7 +408,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        override fun onCharacteristicWriteRequest(device: BluetoothDevice?, requestId: Int, characteristic: BluetoothGattCharacteristic?, preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray?) {
+        override fun onCharacteristicWriteRequest(device: BluetoothDevice?, requestId: Int, characteristic: BluetoothGattCharacteristic, preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray?) {
             super.onCharacteristicWriteRequest(device, requestId, characteristic, preparedWrite, responseNeeded, offset, value)
 
             if(device == null){
@@ -420,6 +420,7 @@ class MainActivity : AppCompatActivity() {
                 Log.w("GattServerCallback", "onCharacteristicWriteRequest - ${device?.address} - $requestId - $offset")
 
                 //putting value on mutable map payload
+                deviceCharacteristicMap[device?.address] = characteristic.uuid
                 var valuePassed = ""
                 value?.let {
                     valuePassed = String(value, Charsets.UTF_8)
@@ -454,7 +455,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        override fun onExecuteWrite(device: BluetoothDevice?, requestId: Int, execute: Boolean) {
+        override fun onExecuteWrite(device: BluetoothDevice, requestId: Int, execute: Boolean) {
             super.onExecuteWrite(device, requestId, execute)
             var data = writePayloadMap[device?.address]
 
@@ -470,14 +471,20 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        fun saveDataReceived(device: BluetoothDevice?){
-            var data = writePayloadMap[device?.address]
-            var charUUID = deviceCharacteristicMap[device?.address]
+        fun saveDataReceived(device: BluetoothDevice){
+            var data = writePayloadMap[device.address]
+            var charUUID = deviceCharacteristicMap[device.address]
+
+            Log.w("GattServerCallback", "Entering saveDataReceived method")
+
 
             charUUID?.let {
+                Log.w("GattServerCallback", "Entering charUUID?.let")
                 data?.let {
+                    Log.w("GattServerCallback", "Entering data?.let")
                     try{
                       device.let {
+                          Log.w("GattServerCallback", "Entering device.let")
                           try{
                               val serializedData = BluetoothWritePayload.fromPayload(data)
                               Log.w("GattServerCallback", "fromPayload - Received data - ${serializedData.id}")
