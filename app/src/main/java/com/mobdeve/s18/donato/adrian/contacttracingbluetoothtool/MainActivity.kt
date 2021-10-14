@@ -598,11 +598,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun stopServer(){
-        bleServer?.clearServices()
-        bleServer?.close()
+        try {
+            bleServer?.clearServices()
+            bleServer?.close()
+            Log.w("BLEGattServer", "Server stopped")
+        } catch (e: Throwable){
+            Log.w("BLEGattServer", "Cannot stop server elegantly! - ${e.localizedMessage}")
+        }
     }
-
-    //fun addService(service: GattService)
 
     fun startAdvertisingLegacy(timeoutInMillis: Long){
         val randomUUID = UUID.randomUUID().toString()
@@ -612,6 +615,7 @@ class MainActivity : AppCompatActivity() {
         data = AdvertiseData.Builder()
                 .setIncludeDeviceName(false)
                 .addServiceUuid(pUuid)
+                .setIncludeTxPowerLevel(true)
                 //.addServiceData(pUuid, "Data".toByteArray(Charset.forName("UTF-8")))
                 .build()
         scanResponseData = AdvertiseData.Builder().addServiceUuid(pUuid).build()
