@@ -18,4 +18,5 @@ class BLEScanner constructor(context: Context, val uuid: String, reportDelay: Lo
     init{
         this.serviceUUID = uuid
     }
+
 }

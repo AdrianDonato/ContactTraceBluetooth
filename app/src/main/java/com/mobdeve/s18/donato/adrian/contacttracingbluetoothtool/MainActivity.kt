@@ -49,6 +49,8 @@ class MainActivity : AppCompatActivity() {
     //bluetooth service
     private var bluetoothManager: BluetoothManager by Delegates.notNull()
 
+    //Work
+    private var currentWork: Work? = null
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -340,7 +342,7 @@ class MainActivity : AppCompatActivity() {
             if(status == BluetoothGatt.GATT_SUCCESS){
                 Log.w("BluetoothGattCallback", "Characteristic read from ${gatt?.device?.address}: ${characteristic?.getStringValue(0)}")
 
-                var writeData = BluetoothWritePayload(id = idNum, central = asCentralDevice()).getPayload()
+                var writeData = BluetoothWritePayload(v = 2, id = idNum, central = asCentralDevice(), rs = 0).getPayload()
                 characteristic?.value = writeData
 
                 val writeSuccess = gatt?.writeCharacteristic(characteristic)
@@ -401,7 +403,7 @@ class MainActivity : AppCompatActivity() {
             //this is where we put the data to be sent to the client/central
             characteristic?.uuid.let{charUUID ->
                 val devAddress = device?.address
-                val base = readPayloadMap.getOrPut(devAddress.toString(), {BluetoothPayload(id = idNum, peripheral = asPeripheralDevice()).getPayload()})
+                val base = readPayloadMap.getOrPut(devAddress.toString(), {BluetoothPayload(v = 2,id = idNum, peripheral = asPeripheralDevice()).getPayload()})
                 Log.w("GattServerCallback", "Payload: " + readPayloadMap.toString())
                 val sentVal = base.copyOfRange(offset, base.size)
                 bleServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, sentVal)
@@ -662,4 +664,106 @@ class MainActivity : AppCompatActivity() {
         return CentralDevice(Build.MODEL, "SELF")
     }
 //
+
+    inner class CentralGattCallback(val work: Work): BluetoothGattCallback(){
+        fun endWorkConnection(gatt: BluetoothGatt){
+            Log.w("CentralGattCallback", "Ending connection with ${gatt.device.address}")
+            gatt.disconnect()
+        }
+
+        override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
+            super.onConnectionStateChange(gatt, status, newState)
+            gatt?.let{
+                Log.w("GattServerCallback", "Conn state changed")
+                if(newState == BluetoothProfile.STATE_CONNECTED){
+                    Log.w("GattServerCallback", "Successfully connected to ${gatt.device.address}")
+
+                    gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_BALANCED)
+                    gatt.requestMtu(512)
+
+                    work.checklist.connected.status = true
+                    work.checklist.connected.timePerformed = System.currentTimeMillis()
+
+                } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                    Log.w("GattServerCallback", "Successfully disconnected from ${gatt.device.address}")
+
+                    work.checklist.disconnected.status = true
+                    work.checklist.disconnected.timePerformed = System.currentTimeMillis()
+
+                    // timeoutHandler.removeCallbacks(work.timeoutRunnable)
+                    if(work.device.address == currentWork?.device?.address){
+                        currentWork = null
+                    }else{ }
+
+                    gatt.close()
+                    // finishWork(work)
+                } else {
+                    Log.w("GattServerCallback", "State is $newState, Status: $status")
+                    endWorkConnection(gatt)
+                }
+            }
+        }
+
+        override fun onMtuChanged(gatt: BluetoothGatt?, mtu: Int, status: Int) {
+            super.onMtuChanged(gatt, mtu, status)
+            if(!work.checklist.mtuChanged.status){
+                work.checklist.mtuChanged.status = true
+                work.checklist.mtuChanged.timePerformed = System.currentTimeMillis()
+
+                Log.w("CentralGattCallback", " ${gatt?.device?.address} MTU is $mtu. Status : ${status == BluetoothGatt.GATT_SUCCESS} ")
+           }
+            gatt?.let{
+                val discoveryOn = gatt.discoverServices()
+                Log.w("CentralGattCallback", "Attempting to start discovery on ${gatt?.device?.address} : $discoveryOn")
+            }
+        }
+
+        override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+            super.onServicesDiscovered(gatt, status)
+            if(status == BluetoothGatt.GATT_SUCCESS){
+                Log.w("CentralGattCallback", "Discovered ${gatt.services.size} on ${gatt.device.address}")
+
+                var service = gatt.getService(UUID.fromString(getString(R.string.ble_uuid)))
+
+                service?.let {
+                    val characteristic = service.getCharacteristic(UUID.fromString(getString(R.string.ble_characuuid)))
+
+                    if(characteristic == null){
+                        val readSuccess = gatt.readCharacteristic(characteristic)
+
+                        Log.w("CentralGattCallback", "Attempt to read characteristic of service on ${gatt.device.address}: $readSuccess")
+                    }else{
+                        Log.w("CentralGattCallback", "${gatt.device.address} does not have our characteristic")
+                        endWorkConnection(gatt)
+                    }
+
+                }
+                if(service == null){
+                    Log.w("CentralGattCallback", "${gatt.device.address} does not have our service")
+                    endWorkConnection(gatt)
+                }
+            }else{
+                Log.w("CentralGattCallback", "No services discoverd on ${gatt.device.address}")
+                endWorkConnection(gatt)
+            }
+        }
+
+        override fun onCharacteristicRead(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?, status: Int) {
+            super.onCharacteristicRead(gatt, characteristic, status)
+            Log.w("CentralGattCallback", "Read Status: $status")
+
+            if(status == BluetoothGatt.GATT_SUCCESS){
+                Log.w("CentralGattCallback", "Characteristic read from ${gatt?.device?.address}: ${characteristic?.getStringValue(0)}")
+
+                Log.w("CentralGattCallback", "onCharacteristicRead: ${work.device.address} - ${work.connectable.rssi}")
+
+                try{
+
+                }catch (e: Throwable){
+                    Log.w("CentralGattCallback", "Failed to process read payload - ${e.message}")
+                }
+
+            }
+        }
+    }
 }

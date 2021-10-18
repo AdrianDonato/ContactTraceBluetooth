@@ -7,7 +7,13 @@ import org.apache.commons.text.StringEscapeUtils
 
 
 //this is for the payload of write operations (OnCharacteristicRead for CENTRAL)
-class BluetoothWritePayload (val id: String, central: CentralDevice){
+
+class BluetoothWritePayload (
+                               val v: Int,
+                               val id: String,
+                               central: CentralDevice,
+                               val rs: Int
+                             ){
     fun getPayload(): ByteArray{
         return gson.toJson(this).toByteArray(Charsets.UTF_8)
     }

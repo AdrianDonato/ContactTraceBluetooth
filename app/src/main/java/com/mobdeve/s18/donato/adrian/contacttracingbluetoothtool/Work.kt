@@ -40,7 +40,7 @@ class Work constructor(
 
     fun startWork(
             context: Context,
-            gattCallback: BluetoothGattCallback
+            gattCallback: MainActivity.CentralGattCallback
     ){
         if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.M){
             gatt = device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
