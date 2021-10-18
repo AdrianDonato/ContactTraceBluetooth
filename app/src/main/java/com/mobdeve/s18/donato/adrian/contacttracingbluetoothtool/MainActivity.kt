@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
 import android.bluetooth.*
+import android.bluetooth.BluetoothGatt.GATT_FAILURE
 import android.bluetooth.le.*
 import android.content.Context
 import android.content.DialogInterface
@@ -25,6 +26,7 @@ import androidx.recyclerview.widget.SimpleItemAnimator
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Bluetooth.BLEAdvertiser
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Bluetooth.BluetoothPayload
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Bluetooth.BluetoothWritePayload
+import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Protocol.Bluetrace
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.R
 import kotlinx.android.synthetic.main.activity_main.*
 import java.nio.charset.Charset
@@ -200,6 +202,18 @@ class MainActivity : AppCompatActivity() {
     }
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
+            var rssi = result.rssi
+            val device = result.device
+            var txPower: Int?= null
+
+            if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O){
+                txPower = result.txPower
+                if(txPower == 127){
+                    txPower = null
+                }
+            }
+            var connectable = ConnectablePeripheral("Manufacturer Data", txPower, rssi)
+//          Utils.broadcastDeviceScanned(context, device, connectable)
             val indexQuery = scanResults.indexOfFirst { it.device.address == result.device.address }
             if (indexQuery != -1) { // A scan result already exists with the same address
                 scanResults[indexQuery] = result
@@ -390,23 +404,42 @@ class MainActivity : AppCompatActivity() {
                 } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                     Log.w("GattServerCallback", "Successfully disconnected from ${device?.address}")
                     //gatt?.close()
+                    readPayloadMap.remove(device?.address)
                 } else {
                     Log.w("GattServerCallback", "State is $newState, Status: $status")
                 }
 
         }
 
-        override fun onCharacteristicReadRequest(device: BluetoothDevice?, requestId: Int, offset: Int, characteristic: BluetoothGattCharacteristic?) {
+        override fun onCharacteristicReadRequest(device: BluetoothDevice?, requestId: Int, offset: Int, characteristic: BluetoothGattCharacteristic) {
             super.onCharacteristicReadRequest(device, requestId, offset, characteristic)
             Log.w("GattServerCallback", "Requested read")
 
-            //this is where we put the data to be sent to the client/central
-            characteristic?.uuid.let{charUUID ->
-                val devAddress = device?.address
-                val base = readPayloadMap.getOrPut(devAddress.toString(), {BluetoothPayload(v = 2,id = idNum, peripheral = asPeripheralDevice()).getPayload()})
-                Log.w("GattServerCallback", "Payload: " + readPayloadMap.toString())
-                val sentVal = base.copyOfRange(offset, base.size)
-                bleServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, sentVal)
+            if(device == null){
+                Log.w("GattServerCallback", "No device")
+            }
+
+            device?.let {
+                if (Bluetrace.supportsCharUUID(characteristic?.uuid)) {
+                    val bluetraceImplementation = Bluetrace.getImplementation(characteristic.uuid)
+
+                    //this is where we put the data to be sent to the client/central
+                    characteristic?.uuid.let { charUUID ->
+                        val devAddress = device?.address
+                        val base = readPayloadMap.getOrPut(devAddress.toString(),
+                                {bluetraceImplementation.peripheral.prepareReadRequestData(
+                                        bluetraceImplementation.versionInt
+                        )
+                                })
+                        Log.w("GattServerCallback", "Payload: " + readPayloadMap.toString())
+                        val sentVal = base.copyOfRange(offset, base.size)
+                        Log.w("GattServerCallback", "onCharacteristicReadRequest from ${device.address} - $requestId - $offset - ${String(sentVal, Charsets.UTF_8)}")
+                        bleServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, sentVal)
+                    }
+                }else{
+                    Log.w("GattServerCallback", "Unsupported characteristic from ${device.address}")
+                    bleServer?.sendResponse(device, requestId, GATT_FAILURE, 0, null)
+                }
             }
         }
 
@@ -421,37 +454,44 @@ class MainActivity : AppCompatActivity() {
                 Log.w("GattServerCallback", "onCharacteristicWriteRequest - ${device?.address} - preparedWrite: $preparedWrite")
                 Log.w("GattServerCallback", "onCharacteristicWriteRequest - ${device?.address} - $requestId - $offset")
 
-                //putting value on mutable map payload
-                deviceCharacteristicMap[device?.address] = characteristic.uuid
-                var valuePassed = ""
-                value?.let {
-                    valuePassed = String(value, Charsets.UTF_8)
-                }
-                Log.w("GattServerCallback", "onCharacteristicWriteRequest - value passed from ${device?.address} - $valuePassed")
-
-                if(value != null){
-                    var dataBuffer = writePayloadMap[device?.address]
-
-                    if(dataBuffer == null){
-                        dataBuffer = ByteArray(0)
+                if(Bluetrace.supportsCharUUID(characteristic.uuid)){
+                    //putting value on mutable map payload
+                    deviceCharacteristicMap[device?.address] = characteristic.uuid
+                    var valuePassed = ""
+                    value?.let {
+                        valuePassed = String(value, Charsets.UTF_8)
                     }
+                    Log.w("GattServerCallback", "onCharacteristicWriteRequest - value passed from ${device?.address} - $valuePassed")
 
-                    dataBuffer = dataBuffer.plus(value)
-                    writePayloadMap[device?.address] = dataBuffer
+                    if(value != null){
+                        var dataBuffer = writePayloadMap[device?.address]
 
-                    Log.w("GattServerCallback", "Accumulated Characteristic: ${String(dataBuffer, Charsets.UTF_8)}")
+                        if(dataBuffer == null){
+                            dataBuffer = ByteArray(0)
+                        }
 
-                    if(preparedWrite && responseNeeded){
-                        Log.w("GattServerCallback", "Sending response offset: ${dataBuffer.size}")
-                        bleServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, dataBuffer.size, value)
-                    }
-                    //check opentrace code if preparedWrite is false
-                    if(!preparedWrite){
-                        Log.w("GattServerCallback", "preparedWrite - $preparedWrite")
-                        saveDataReceived(device)
-                        if(responseNeeded){
+                        dataBuffer = dataBuffer.plus(value)
+                        writePayloadMap[device?.address] = dataBuffer
+
+                        Log.w("GattServerCallback", "Accumulated Characteristic: ${String(dataBuffer, Charsets.UTF_8)}")
+
+                        if(preparedWrite && responseNeeded){
+                            Log.w("GattServerCallback", "Sending response offset: ${dataBuffer.size}")
                             bleServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, dataBuffer.size, value)
                         }
+                        //check opentrace code if preparedWrite is false
+                        if(!preparedWrite){
+                            Log.w("GattServerCallback", "preparedWrite - $preparedWrite")
+                            saveDataReceived(device)
+                            if(responseNeeded){
+                                bleServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, dataBuffer.size, value)
+                            }
+                        }
+                    }
+                }else{
+                    Log.w("GattServerCallback", "Unsupported Characteristic from ${device.address}")
+                    if(responseNeeded){
+                        bleServer?.sendResponse(device, requestId, GATT_FAILURE, 0, null)
                     }
                 }
             }
@@ -486,6 +526,9 @@ class MainActivity : AppCompatActivity() {
                     Log.w("GattServerCallback", "Entering data?.let")
                     try{
                       device.let {
+                          val bluetraceImplementation = Bluetrace.getImplementation(charUUID)
+
+                          val connectionRecord = bluetraceImplementation.peripheral.processWriteRequestDataReceived(data, device.address)
                           Log.w("GattServerCallback", "Entering device.let")
                           try{
                               val serializedData = BluetoothWritePayload.fromPayload(data)
@@ -748,21 +791,61 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        override fun onCharacteristicRead(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?, status: Int) {
+        override fun onCharacteristicRead(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
             super.onCharacteristicRead(gatt, characteristic, status)
             Log.w("CentralGattCallback", "Read Status: $status")
 
             if(status == BluetoothGatt.GATT_SUCCESS){
-                Log.w("CentralGattCallback", "Characteristic read from ${gatt?.device?.address}: ${characteristic?.getStringValue(0)}")
+                Log.w("CentralGattCallback", "Characteristic read from ${gatt.device.address}: ${characteristic.getStringValue(0)}")
 
                 Log.w("CentralGattCallback", "onCharacteristicRead: ${work.device.address} - ${work.connectable.rssi}")
 
-                try{
+                if(Bluetrace.supportsCharUUID(characteristic.uuid)) {
+                    try {
+                        val bluetraceImplementation = Bluetrace.getImplementation(characteristic.uuid)
+                        val dataBytes = characteristic.value
 
-                }catch (e: Throwable){
-                    Log.w("CentralGattCallback", "Failed to process read payload - ${e.message}")
+                        val connectionRecord = bluetraceImplementation.central.processReadRequestDataReceived(
+                                dataRead = dataBytes, peripheralAddress = work.device.address, rssi = work.connectable.rssi, txPower = work.connectable.transmissionPower
+                        )
+
+                    } catch (e: Throwable) {
+                        Log.w("CentralGattCallback", "Failed to process read payload - ${e.message}")
+                    }
                 }
+                work.checklist.readCharacteristic.status = true
+                work.checklist.readCharacteristic.timePerformed = System.currentTimeMillis()
+            } else{
+                Log.w("CentralGattCallback", "Failed to read characteristic from ${gatt.device.address} : $status")
+            }
+            if(Bluetrace.supportsCharUUID(characteristic.uuid)){
+                val bluetraceImplementation =Bluetrace.getImplementation(characteristic.uuid)
 
+                var writeData = bluetraceImplementation.central.prepareWriteRequestData(
+                        bluetraceImplementation.versionInt,
+                        work.connectable.rssi,
+                        work.connectable.transmissionPower
+                )
+
+                characteristic.value = writeData
+                val writeSuccess = gatt?.writeCharacteristic(characteristic)
+                Log.w("CentralGattCallback", "Attempt to write characteristic to our service on ${gatt.device.address}: $writeSuccess")
+            } else{
+                Log.w("CentralGattCallback", "Not writint to ${gatt.device.address}. Characteristic ${characteristic.uuid} is not supported")
+                endWorkConnection(gatt)
+            }
+        }
+
+        override fun onCharacteristicWrite(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
+            super.onCharacteristicWrite(gatt, characteristic, status)
+
+            if(status == BluetoothGatt.GATT_SUCCESS){
+                Log.w("CentralGattCallback", "Characteristic wrote successfully")
+                work.checklist.writeCharacteristic.status = true
+                work.checklist.writeCharacteristic.timePerformed = System.currentTimeMillis()
+            }else{
+                Log.w("CentralGattCallback", "Failed to write characteristic $status")
+                endWorkConnection(gatt)
             }
         }
     }
