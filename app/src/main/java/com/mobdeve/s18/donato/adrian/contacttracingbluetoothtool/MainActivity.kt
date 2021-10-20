@@ -401,6 +401,7 @@ class MainActivity : AppCompatActivity() {
 
             if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O){
                 txPower = result.txPower
+                Log.w("onScanResult", "txPower = ${txPower}")
                 if(txPower == 127){
                     txPower = null
                 }
@@ -836,6 +837,7 @@ class MainActivity : AppCompatActivity() {
             .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_POWER)
             .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
             .setConnectable(true)
+            //.setTimeout(0)
             .build()
     var pUuid: ParcelUuid by Delegates.notNull()
 
@@ -882,15 +884,16 @@ class MainActivity : AppCompatActivity() {
 
         data = AdvertiseData.Builder()
                 .setIncludeDeviceName(false)
-                .addServiceUuid(pUuid)
                 .setIncludeTxPowerLevel(true)
+                .addServiceUuid(pUuid)
                 //.addServiceData(pUuid, "Data".toByteArray(Charset.forName("UTF-8")))
                 .build()
         scanResponseData = AdvertiseData.Builder().addServiceUuid(pUuid).build()
         try {
             Log.d("BLEAdvertiser", "Start advertising")
             advertiser = advertiser ?: BluetoothAdapter.getDefaultAdapter().bluetoothLeAdvertiser
-            advertiser?.startAdvertising(settings, data, scanResponseData, callback)
+            Log.d("BLEAdvertiser", "Advertise Data: ${data.toString()}")
+            advertiser?.startAdvertising(settings, data, callback)
         } catch (e: Throwable) {
             Log.e("BLEAdvertiser", "Failed to start advertising legacy: ${e.message}")
         }
