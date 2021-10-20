@@ -33,6 +33,7 @@ import java.nio.charset.Charset
 import java.util.*
 import java.util.Arrays.toString
 import java.util.Objects.toString
+import java.util.concurrent.PriorityBlockingQueue
 import kotlin.properties.Delegates
 
 
@@ -45,14 +46,199 @@ class MainActivity : AppCompatActivity() {
     private lateinit var yourID: TextView
     private var serviceUUID: String by Delegates.notNull()
 
+    //CHANGE ONCE MAHANAP ANG MAXQUEUETIME SA OPENTRACE
+    private var maxQueueTime: Long = 120000
+    private var connTimeout: Long = 180000 //change, imbento lang to for now
+    //handlers
+    private lateinit var timeoutHandler: Handler
+    private lateinit var queueHandler: Handler
+    private lateinit var blacklistHandler: Handler
+
+    //queue for works
+    private val workQueue: PriorityBlockingQueue<Work> = PriorityBlockingQueue(5, Collections.reverseOrder<Work>())
+    //private val blacklist: MutableList<BlacklistEntry> = Collections.synchronizedList(ArrayList())
+
     //variable to be read in text bluetooth read/write
     private var idNum = (0..100).random().toString()
 
     //bluetooth service
     private var bluetoothManager: BluetoothManager by Delegates.notNull()
 
+    //work timeout listener
+    val onWorkTimeoutListener = object: Work.OnWorkTimeoutListener{
+        override fun onWorkTimeout(work: Work) {
+            if(!isCurrentlyWorkedOn(work.device.address)){
+                Log.w("WorkTimeoutListener", "No longer being worked on.")
+            }
+            Log.w("WorkTimeoutListener", "Work status: ${work.checklist}")
+
+            //add other logs later - 10/19/21
+        }
+    }
+
+    //check if the work is the one being currently used
+    fun isCurrentlyWorkedOn(address: String?): Boolean {
+        return currentWork?.let {
+            it.device.address == address
+        } ?: false
+    }
+
+    //adding work
+    fun addWork(work: Work): Boolean{
+
+        //don't add if the work is being currently processed
+        if(isCurrentlyWorkedOn(work.device.address)){
+            Log.w("WorkTimeoutListener", "${work.device.address} is currently being worked on. Do not add.")
+            return false
+        }
+
+        //add blacklist condition
+        //---
+
+        //
+        if(workQueue.filter { it.device.address == work.device.address }.isEmpty()){
+            workQueue.offer(work)
+            queueHandler.postDelayed({
+                if(workQueue.contains(work)){
+                    Log.w("WorkTimeoutListener", "Work for ${work.device.address} removed: ${workQueue.remove(work)}")
+                }
+            }, maxQueueTime)
+            Log.w("WorkTimeoutListener", "Added to work queue: ${work.device.address}")
+            return true
+        } else {
+
+            Log.w("WorkTimeoutListener", "${work.device.address} is already in queue")
+
+            var prevWork = workQueue.find { it.device.address == work.device.address }
+            var removed = workQueue.remove(prevWork)
+            var added = workQueue.offer(work)
+
+            Log.w("WorkTimeoutListener", "Queue updated: removed ${removed}, added ${added}")
+
+            return false
+        }
+    }
+
     //Work
     private var currentWork: Work? = null
+
+    //doing work
+    fun doWork(){
+        if(currentWork != null){
+            Log.w("doWork", "Already trying to connect to ${currentWork?.device?.address}")
+
+            var timedOut = System.currentTimeMillis() > currentWork?.timeout ?: 0
+
+            if(currentWork?.finished == true || timedOut){
+                Log.w("doWork", "Handling erroneous current work for ${currentWork?.device?.address}"
+                        + " - finished: ${currentWork?.finished ?: false}, timedout: $timedOut")
+
+                //add extra condition before doing dowork()
+                doWork()
+            }
+
+            return
+        }
+
+        if(workQueue.isEmpty()){
+            Log.w("doWork", "Work empty - nothing to do")
+        }
+
+        Log.w("doWork", "Work queue size: ${workQueue.size}")
+        var workToDo: Work? = null
+        val now = System.currentTimeMillis()
+
+        while(workToDo == null && workQueue.isNotEmpty()){
+            workToDo = workQueue.poll()
+
+            workToDo?.let{ work ->
+                //if(now - work.time)
+                if(now - work.timeStamp > maxQueueTime){
+                    Log.w("doWork", "Work to do too old: ${work.device.address}")
+                    workToDo = null
+                }
+            }
+
+        }
+
+        workToDo?.let { currentWorkOrder ->
+            val device = currentWorkOrder.device
+
+            //ADD BLACKLIST CONDITION
+
+            val alreadyConnected = getConnectionStatus(device)
+            Log.w("doWork", "Already connected to ${device.address}: $alreadyConnected")
+
+            if(alreadyConnected){
+                currentWorkOrder.checklist.skipped.status = true
+                currentWorkOrder.checklist.skipped.timePerformed = System.currentTimeMillis()
+                finishWork(currentWorkOrder)
+            } else {
+                currentWorkOrder.let {
+                    val workGattCallback = CentralGattCallback(it)
+                    Log.w("doWork", "Starting work - connecting to device: ${device.address} @ ${it.connectable.rssi} ${System.currentTimeMillis() - it.timeStamp}ms ago")
+                    currentWork = it
+
+                    try {
+                        it.checklist.started.status = true
+                        it.checklist.started.timePerformed = System.currentTimeMillis()
+
+                        it.startWork(applicationContext, workGattCallback)
+                        var connecting = it.gatt?.connect() ?: false
+
+                        if(!connecting){
+                            Log.w("doWork", "Hala, not connecting! Moving on to next work")
+                            currentWork = null
+                            doWork()
+                            return
+                        } else {
+                            Log.w("doWork", "Connection to ${it.device.address} in progress")
+                        }
+
+                        timeoutHandler.postDelayed(it.timeoutRunnable, connTimeout)
+                        it.timeout = System.currentTimeMillis() + connTimeout
+
+                        Log.w("doWork", "Timeout scheduled for ${it.device.address}")
+
+                    } catch (e: Throwable){
+                        Log.w("doWork", "Unexpected error while attempting to connect to ${device.address}: ${e.localizedMessage}")
+                        Log.w("doWork", "Moving on to next work")
+                        currentWork = null
+                        doWork()
+                        return
+                    }
+
+                }
+            }
+        }
+        if(workToDo == null){
+            Log.w("doWork", "No work to do!")
+        }
+    }
+
+    private fun finishWork(work: Work){
+        if(work.finished){
+            Log.w("finishWork", "Work on ${work.device.address} already finished / closed")
+            return
+        }
+
+        //work.isCriticalsCompleted
+
+        Log.w("finishWork", "Work on ${work.device.address} stopped in ${work.checklist.disconnected.timePerformed}")
+        Log.w("finishWork", "Work on ${work.device.address} completed? ") //complete this log
+
+        timeoutHandler.removeCallbacks(work.timeoutRunnable)
+        work.finished = true
+        doWork()
+    }
+
+    private fun getConnectionStatus(device: BluetoothDevice): Boolean {
+        val connectedDevices = bluetoothManager.getDevicesMatchingConnectionStates(
+                BluetoothProfile.GATT, intArrayOf(BluetoothProfile.STATE_CONNECTED)
+        )
+        return connectedDevices.contains(device)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -73,6 +259,12 @@ class MainActivity : AppCompatActivity() {
         var broadcastFilter = IntentFilter()
         broadcastFilter.addAction("BluetoothGattCallback")
         */
+
+
+        //ilipat to prepare() function once meron na tayo
+        timeoutHandler = Handler(Looper.getMainLooper())
+        queueHandler = Handler(Looper.getMainLooper())
+        blacklistHandler = Handler(Looper.getMainLooper())
 
         //isScanning is to check if ble is active
         scanButton.setOnClickListener{
@@ -144,7 +336,7 @@ class MainActivity : AppCompatActivity() {
                 ->                 requestPermission(
                     Manifest.permission.ACCESS_FINE_LOCATION,
                     LOCATION_PERMISSION_REQUEST_CODE
-                )
+            )
             }
             builder.show()
         }
@@ -202,6 +394,7 @@ class MainActivity : AppCompatActivity() {
     }
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
+            Log.w("onScanResult", "Entered onScanResult")
             var rssi = result.rssi
             val device = result.device
             var txPower: Int?= null
@@ -214,9 +407,19 @@ class MainActivity : AppCompatActivity() {
             }
             var connectable = ConnectablePeripheral("Manufacturer Data", txPower, rssi)
 //          Utils.broadcastDeviceScanned(context, device, connectable)
+            device?.let {
+                connectable?.let {
+                    val work = Work(device, connectable, onWorkTimeoutListener)
+                    if(addWork(work)){
+                        doWork()
+                    }
+                }
+            }
+
             val indexQuery = scanResults.indexOfFirst { it.device.address == result.device.address }
             if (indexQuery != -1) { // A scan result already exists with the same address
                 scanResults[indexQuery] = result
+                val rssi = result.rssi
                 scanResultAdapter.notifyItemChanged(indexQuery)
             } else {
                 with(result.device) {
@@ -224,6 +427,26 @@ class MainActivity : AppCompatActivity() {
                 }
                 scanResults.add(result)
                 scanResultAdapter.notifyItemInserted(scanResults.size - 1)
+            }
+        }
+
+        //processing of scan result (get rssi, id, etc here?)
+        private fun processScanResult(scanResult: ScanResult?){
+
+            scanResult?.let { result ->
+                var rssi = result.rssi
+                val device = result.device
+                var txPower: Int?= null
+
+                if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O){
+                    txPower = result.txPower
+                    if(txPower == 127){
+                        txPower = null
+                    }
+                }
+
+                var connectable = ConnectablePeripheral("Manufacturer Data", txPower, rssi)
+                //Utils.broadcastDeviceScanned(context, device, connectable)
             }
         }
 
@@ -393,25 +616,24 @@ class MainActivity : AppCompatActivity() {
         val deviceCharacteristicMap: MutableMap<String, UUID> = HashMap()
 
         override fun onConnectionStateChange(device: BluetoothDevice?, status: Int, newState: Int) {
-           super.onConnectionStateChange(device, status, newState)
+            super.onConnectionStateChange(device, status, newState)
 
             Log.w("GattServerCallback", "Conn state changed")
-                    Log.w("GattServerCallback", "Gatt Connection Successful")
-                if(newState == BluetoothProfile.STATE_CONNECTED){
-                    Log.w("GattServerCallback", "Successfully connected to ${device?.address}")
-                    //store bluetooth gatt table
+            Log.w("GattServerCallback", "Gatt Connection Successful")
+            if(newState == BluetoothProfile.STATE_CONNECTED){
+                Log.w("GattServerCallback", "Successfully connected to ${device?.address}")
+                //store bluetooth gatt table
 
-                } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                    Log.w("GattServerCallback", "Successfully disconnected from ${device?.address}")
-                    //gatt?.close()
-                    readPayloadMap.remove(device?.address)
-                } else {
-                    Log.w("GattServerCallback", "State is $newState, Status: $status")
-                }
+            } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                Log.w("GattServerCallback", "Successfully disconnected from ${device?.address}")
+                //gatt?.close()
+                readPayloadMap.remove(device?.address)
+            } else {
+                Log.w("GattServerCallback", "State is $newState, Status: $status")
+            }
 
         }
 
-        //comment
         override fun onCharacteristicReadRequest(device: BluetoothDevice?, requestId: Int, offset: Int, characteristic: BluetoothGattCharacteristic) {
             super.onCharacteristicReadRequest(device, requestId, offset, characteristic)
             Log.w("GattServerCallback", "Requested read")
@@ -430,7 +652,7 @@ class MainActivity : AppCompatActivity() {
                         val base = readPayloadMap.getOrPut(devAddress.toString(),
                                 {bluetraceImplementation.peripheral.prepareReadRequestData(
                                         bluetraceImplementation.versionInt
-                        )
+                                )
                                 })
                         Log.w("GattServerCallback", "Payload: " + readPayloadMap.toString())
                         val sentVal = base.copyOfRange(offset, base.size)
@@ -526,18 +748,18 @@ class MainActivity : AppCompatActivity() {
                 data?.let {
                     Log.w("GattServerCallback", "Entering data?.let")
                     try{
-                      device.let {
-                          val bluetraceImplementation = Bluetrace.getImplementation(charUUID)
+                        device.let {
+                            val bluetraceImplementation = Bluetrace.getImplementation(charUUID)
 
-                          val connectionRecord = bluetraceImplementation.peripheral.processWriteRequestDataReceived(data, device.address)
-                          Log.w("GattServerCallback", "Entering device.let")
-                          try{
-                              val serializedData = BluetoothWritePayload.fromPayload(data)
-                              Log.w("GattServerCallback", "fromPayload - Received data - ${serializedData.id}")
-                          } catch (e: Throwable) {
-                              Log.w("GattServerCallback", "fromPayload - Failed to process write payload - ${e.message}")
-                          }
-                      }
+                            val connectionRecord = bluetraceImplementation.peripheral.processWriteRequestDataReceived(data, device.address)
+                            Log.w("GattServerCallback", "Entering device.let")
+                            try{
+                                val serializedData = BluetoothWritePayload.fromPayload(data)
+                                Log.w("GattServerCallback", "fromPayload - Received data - ${serializedData.id}")
+                            } catch (e: Throwable) {
+                                Log.w("GattServerCallback", "fromPayload - Failed to process write payload - ${e.message}")
+                            }
+                        }
                     } catch (e: Throwable) {
                         Log.w("GattServerCallback", "saveDataReceived - Failed to process write payload - ${e.message}")
                     }
@@ -633,7 +855,7 @@ class MainActivity : AppCompatActivity() {
         if(startBool == true){
             val gattService = BluetoothGattService(UUID.fromString(getString(R.string.ble_uuid)), BluetoothGattService.SERVICE_TYPE_PRIMARY)
             val gattCharacteristic = BluetoothGattCharacteristic(UUID.fromString(getString(R.string.ble_characuuid)),
-            BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_WRITE,
+                    BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_WRITE,
                     BluetoothGattCharacteristic.PERMISSION_READ or BluetoothGattCharacteristic.PERMISSION_WRITE)
             gattService.addCharacteristic(gattCharacteristic)
             bleServer.addService(gattService)
@@ -755,7 +977,7 @@ class MainActivity : AppCompatActivity() {
                 work.checklist.mtuChanged.timePerformed = System.currentTimeMillis()
 
                 Log.w("CentralGattCallback", " ${gatt?.device?.address} MTU is $mtu. Status : ${status == BluetoothGatt.GATT_SUCCESS} ")
-           }
+            }
             gatt?.let{
                 val discoveryOn = gatt.discoverServices()
                 Log.w("CentralGattCallback", "Attempting to start discovery on ${gatt?.device?.address} : $discoveryOn")
@@ -772,7 +994,7 @@ class MainActivity : AppCompatActivity() {
                 service?.let {
                     val characteristic = service.getCharacteristic(UUID.fromString(getString(R.string.ble_characuuid)))
 
-                    if(characteristic == null){
+                    if(characteristic != null){
                         val readSuccess = gatt.readCharacteristic(characteristic)
 
                         Log.w("CentralGattCallback", "Attempt to read characteristic of service on ${gatt.device.address}: $readSuccess")
@@ -799,7 +1021,7 @@ class MainActivity : AppCompatActivity() {
             if(status == BluetoothGatt.GATT_SUCCESS){
                 Log.w("CentralGattCallback", "Characteristic read from ${gatt.device.address}: ${characteristic.getStringValue(0)}")
 
-                Log.w("CentralGattCallback", "onCharacteristicRead: ${work.device.address} - ${work.connectable.rssi}")
+                Log.w("CentralGattCallback", "onCharacteristicRead: ${work.device.address} - ${work.connectable.rssi} - ${work.connectable.transmissionPower}")
 
                 if(Bluetrace.supportsCharUUID(characteristic.uuid)) {
                     try {
