@@ -411,6 +411,7 @@ class MainActivity : AppCompatActivity() {
 
         }
 
+        //comment
         override fun onCharacteristicReadRequest(device: BluetoothDevice?, requestId: Int, offset: Int, characteristic: BluetoothGattCharacteristic) {
             super.onCharacteristicReadRequest(device, requestId, offset, characteristic)
             Log.w("GattServerCallback", "Requested read")
