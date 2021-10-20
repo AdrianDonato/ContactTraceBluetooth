@@ -983,7 +983,7 @@ class MainActivity : AppCompatActivity() {
                 Log.w("CentralGattCallback", "Attempting to start discovery on ${gatt?.device?.address} : $discoveryOn")
             }
         }
-
+        //comment 6:54pm 10/20/21
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
             super.onServicesDiscovered(gatt, status)
             if(status == BluetoothGatt.GATT_SUCCESS){
