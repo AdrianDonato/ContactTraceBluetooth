@@ -778,7 +778,7 @@ class MainActivity : AppCompatActivity() {
     // BLEAdvertising
     //private val advertiser = BLEAdvertiser(getString(R.string.ble_uuid))
 
-    private var advertiser: BluetoothLeAdvertiser? = BluetoothAdapter.getDefaultAdapter().getBluetoothLeAdvertiser()
+    private var advertiser: BluetoothLeAdvertiser? = BluetoothAdapter.getDefaultAdapter().bluetoothLeAdvertiser
     private var charLength = 3
 
 
@@ -839,6 +839,8 @@ class MainActivity : AppCompatActivity() {
             .setConnectable(true)
             //.setTimeout(0)
             .build()
+    var advTxPower = settings.txPowerLevel
+
     var pUuid: ParcelUuid by Delegates.notNull()
 
     var data: AdvertiseData? = null
@@ -848,6 +850,7 @@ class MainActivity : AppCompatActivity() {
     fun startServer(): Boolean{
         var startBool = false
         Log.w("BLEGattServer", "Starting server")
+        Log.w("BLEGattServer", "txPowerLevel: $advTxPower")
         bleServer = bluetoothManager.openGattServer(applicationContext, gattServerCallback)
         bleServer?.let{
             it.clearServices()
