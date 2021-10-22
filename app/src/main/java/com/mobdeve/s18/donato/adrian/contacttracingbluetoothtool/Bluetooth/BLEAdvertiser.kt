@@ -13,19 +13,52 @@ import android.os.ParcelUuid
 import android.util.Log
 import java.nio.charset.Charset
 import java.util.*
+import kotlin.properties.Delegates
 
 
 class BLEAdvertiser constructor(val serviceUUID: String) {
-    private var advertiser:BluetoothLeAdvertiser? = BluetoothAdapter.getDefaultAdapter().getBluetoothLeAdvertiser()
+    private var advertiser: BluetoothLeAdvertiser? = BluetoothAdapter.getDefaultAdapter().bluetoothLeAdvertiser
     private var charLength = 3
 
-
     private var callback: AdvertiseCallback = object: AdvertiseCallback(){
-        override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
+            override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
             super.onStartSuccess(settingsInEffect)
+            Log.d("BLEAdvertiser", "Advertising successful")
+            isAdvertising = true
         }
         override fun onStartFailure(errorCode: Int) {
             super.onStartFailure(errorCode)
+            var reason: String
+
+            when (errorCode) {
+                ADVERTISE_FAILED_ALREADY_STARTED -> {
+                    reason = "ADVERTISE_FAILED_ALREADY_STARTED"
+                    isAdvertising = true
+                }
+                ADVERTISE_FAILED_FEATURE_UNSUPPORTED -> {
+                    reason = "ADVERTISE_FAILED_FEATURE_UNSUPPORTED"
+                    isAdvertising = false
+                }
+                ADVERTISE_FAILED_INTERNAL_ERROR -> {
+                    reason = "ADVERTISE_FAILED_INTERNAL_ERROR"
+                    isAdvertising = false
+                }
+                ADVERTISE_FAILED_TOO_MANY_ADVERTISERS -> {
+                    reason = "ADVERTISE_FAILED_TOO_MANY_ADVERTISERS"
+                    isAdvertising = false
+                }
+                ADVERTISE_FAILED_DATA_TOO_LARGE -> {
+                    reason = "ADVERTISE_FAILED_DATA_TOO_LARGE"
+                    isAdvertising = false
+                    charLength--
+                }
+
+                else -> {
+                    reason = "UNDOCUMENTED"
+                }
+            }
+
+            Log.d("BLEAdvertiser", "Advertising failed: " + reason)
         }
     }
 
@@ -37,25 +70,50 @@ class BLEAdvertiser constructor(val serviceUUID: String) {
     var settings = AdvertiseSettings.Builder()
             .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_POWER)
             .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
-            .setConnectable(false)
+            .setConnectable(true)
+            //.setTimeout(0)
             .build()
-    var pUuid = ParcelUuid(UUID.fromString(serviceUUID))
+    var advTxPower = settings.txPowerLevel
+
+    var pUuid: ParcelUuid by Delegates.notNull()
 
     var data: AdvertiseData? = null
+    var scanResponseData: AdvertiseData? = null
 
     fun startAdvertisingLegacy(timeoutInMillis: Long){
         val randomUUID = UUID.randomUUID().toString()
         val finalString = randomUUID.substring(randomUUID.length - charLength, randomUUID.length)
+        val serviceDataByteArray = finalString.toByteArray()
+
         data = AdvertiseData.Builder()
-                .setIncludeDeviceName(true)
+                .setIncludeDeviceName(false)
+                .setIncludeTxPowerLevel(true)
                 .addServiceUuid(pUuid)
-                .addServiceData(pUuid, "Data".toByteArray(Charset.forName("UTF-8")))
+                //.addServiceData(pUuid, "Data".toByteArray(Charset.forName("UTF-8")))
                 .build()
+        scanResponseData = AdvertiseData.Builder().addServiceUuid(pUuid).build()
+        try {
+            Log.d("BLEAdvertiser", "Start advertising")
+            advertiser = advertiser ?: BluetoothAdapter.getDefaultAdapter().bluetoothLeAdvertiser
+            Log.d("BLEAdvertiser", "Advertise Data: ${data.toString()}")
+            advertiser?.startAdvertising(settings, data, callback)
+        } catch (e: Throwable) {
+            Log.e("BLEAdvertiser", "Failed to start advertising legacy: ${e.message}")
+        }
+
+        /*
+        if (!infiniteAdvertising) {
+            handler.removeCallbacksAndMessages(stopRunnable)
+            handler.postDelayed(stopRunnable, timeoutInMillis)
+        }
+         */
     }
+
 
     fun startAdvertising(timeoutInMillis: Long) {
         startAdvertisingLegacy(timeoutInMillis)
         shouldBeAdvertising = true
+        Log.d("BLEAdvertiser", "Advertising starting..")
     }
 
     fun stopAdvertising() {
@@ -67,7 +125,7 @@ class BLEAdvertiser constructor(val serviceUUID: String) {
 
         }
         shouldBeAdvertising = false
+        isAdvertising = false
         handler.removeCallbacksAndMessages(null)
     }
-
 }

@@ -40,6 +40,7 @@ class Work constructor(
 
     fun startWork(
             context: Context,
+            /* TODO: Parameter should changed to Worker.CentralGattCallback */
             gattCallback: MainActivity.CentralGattCallback
     ){
         if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.M){
