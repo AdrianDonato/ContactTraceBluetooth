@@ -47,8 +47,8 @@ class MainActivity : AppCompatActivity() {
     private var serviceUUID: String by Delegates.notNull()
 
     //CHANGE ONCE MAHANAP ANG MAXQUEUETIME SA OPENTRACE
-    private var maxQueueTime: Long = 120000
-    private var connTimeout: Long = 180000 //change, imbento lang to for now
+    private var maxQueueTime: Long = 7000
+    private var connTimeout: Long = 6000 //change, imbento lang to for now
     //handlers
     private lateinit var timeoutHandler: Handler
     private lateinit var queueHandler: Handler
@@ -56,7 +56,7 @@ class MainActivity : AppCompatActivity() {
 
     //queue for works
     private val workQueue: PriorityBlockingQueue<Work> = PriorityBlockingQueue(5, Collections.reverseOrder<Work>())
-    //private val blacklist: MutableList<BlacklistEntry> = Collections.synchronizedList(ArrayList())
+    private val blacklist: MutableList<BlacklistEntry> = Collections.synchronizedList(ArrayList())
 
     //variable to be read in text bluetooth read/write
     private var idNum = (0..100).random().toString()
@@ -88,26 +88,31 @@ class MainActivity : AppCompatActivity() {
 
         //don't add if the work is being currently processed
         if(isCurrentlyWorkedOn(work.device.address)){
-            Log.w("WorkTimeoutListener", "${work.device.address} is currently being worked on. Do not add.")
+            Log.w("AddWork", "${work.device.address} is currently being worked on. Do not add.")
             return false
         }
 
         //add blacklist condition
-        //---
+        //if(useBlacklist)
+
+        if(blacklist.filter{it.uniqueIdentifier == work.device.address}.isNotEmpty()){
+            Log.w("AddWork", "${work.device.address} is in blacklist. Not adding.")
+            return false
+        }
 
         //
         if(workQueue.filter { it.device.address == work.device.address }.isEmpty()){
             workQueue.offer(work)
             queueHandler.postDelayed({
                 if(workQueue.contains(work)){
-                    Log.w("WorkTimeoutListener", "Work for ${work.device.address} removed: ${workQueue.remove(work)}")
+                    Log.w("AddWork", "Work for ${work.device.address} removed: ${workQueue.remove(work)}")
                 }
             }, maxQueueTime)
-            Log.w("WorkTimeoutListener", "Added to work queue: ${work.device.address}")
+            Log.w("AddWork", "Added to work queue: ${work.device.address}")
             return true
         } else {
 
-            Log.w("WorkTimeoutListener", "${work.device.address} is already in queue")
+            Log.w("AddWork", "${work.device.address} is already in queue")
 
             var prevWork = workQueue.find { it.device.address == work.device.address }
             var removed = workQueue.remove(prevWork)
@@ -165,6 +170,11 @@ class MainActivity : AppCompatActivity() {
             val device = currentWorkOrder.device
 
             //ADD BLACKLIST CONDITION
+            if(blacklist.filter{it.uniqueIdentifier == device.address}.isNotEmpty()){
+                Log.w("doWork", "${device.address} has already been worked on. Skipping.")
+                doWork()
+                return
+            }
 
             val alreadyConnected = getConnectionStatus(device)
             Log.w("doWork", "Already connected to ${device.address}: $alreadyConnected")
@@ -237,6 +247,20 @@ class MainActivity : AppCompatActivity() {
                 BluetoothProfile.GATT, intArrayOf(BluetoothProfile.STATE_CONNECTED)
         )
         return connectedDevices.contains(device)
+    }
+
+    fun terminateConnections() {
+        Log.w("terminateConnections", "Cleaning up worker.")
+
+        currentWork?.gatt?.disconnect()
+        currentWork = null
+
+        timeoutHandler.removeCallbacksAndMessages(null)
+        queueHandler.removeCallbacksAndMessages(null)
+        blacklistHandler.removeCallbacksAndMessages(null)
+
+        workQueue.clear()
+        blacklist.clear()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -366,13 +390,21 @@ class MainActivity : AppCompatActivity() {
     /* BLE Scanner : Should be separate kt file? */
     /* 10/5/2021 */
     // can find a ble device but not sure if this is accurate
+    /*
     private val bleScanner by lazy {
         bluetoothAdapter.bluetoothLeScanner
-    }
+    } */
+
+    //second version of bleScanner
+    private var bleScanner: BluetoothLeScanner? = BluetoothAdapter.getDefaultAdapter().bluetoothLeScanner
+
     private val scanSettings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_POWER)
             .setReportDelay(0)
             .build()
+
+    private val scanHandler = Handler(Looper.getMainLooper())
+    private val infiniteScanning = false
 
     private fun startBleScan(){
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !isLocationPermissionGranted) {
@@ -388,13 +420,21 @@ class MainActivity : AppCompatActivity() {
 
             scanResults.clear()
             scanResultAdapter.notifyDataSetChanged()
-            bleScanner.startScan(filters, scanSettings, scanCallback)
+
+            bleScanner = bleScanner ?: BluetoothAdapter.getDefaultAdapter().bluetoothLeScanner
+            bleScanner?.startScan(filters, scanSettings, scanCallback)
+
+            if(!infiniteScanning){
+                scanHandler.postDelayed({stopBleScan()}, 8000)
+            }
+
             isScanning = true
         }
     }
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             Log.w("onScanResult", "Entered onScanResult")
+            Log.w("onScanResult", "Scan Result: ${result.toString()}")
             var rssi = result.rssi
             val device = result.device
             var txPower: Int?= null
@@ -467,8 +507,9 @@ class MainActivity : AppCompatActivity() {
 
     //stops scanning of ble devices
     private fun stopBleScan(){
-        bleScanner.stopScan(scanCallback)
+        bleScanner?.stopScan(scanCallback)
         isScanning = false
+        terminateConnections()
     }
 
     //bluetoooth gatt server
@@ -1037,6 +1078,14 @@ class MainActivity : AppCompatActivity() {
                         val connectionRecord = bluetraceImplementation.central.processReadRequestDataReceived(
                                 dataRead = dataBytes, peripheralAddress = work.device.address, rssi = work.connectable.rssi, txPower = work.connectable.transmissionPower
                         )
+
+                        //ADD TO BLACKLIST
+                        Log.w("CentralGattCallback", "Adding to Blacklist: ${work.device.address}")
+                        val entry = BlacklistEntry(work.device.address, System.currentTimeMillis())
+                        blacklist.add(entry)
+                        blacklistHandler.postDelayed({
+                            Log.w("CentralGattCallback", "Blacklist for ${entry.uniqueIdentifier} removed?: ${blacklist.remove(entry)}")
+                        }, 100000)
 
                     } catch (e: Throwable) {
                         Log.w("CentralGattCallback", "Failed to process read payload - ${e.message}")
