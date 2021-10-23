@@ -48,7 +48,7 @@ dependencies {
     implementation "androidx.core:core-ktx:+"
     implementation 'org.apache.commons:commons-text:1.9'
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
-
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.5.2'
 
 
 }
