@@ -1,4 +1,4 @@
-package com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Bluetooth
+package com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool
 
 import android.Manifest
 

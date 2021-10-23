@@ -14,6 +14,7 @@ import android.os.PowerManager
 import android.util.Log
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Bluetooth.BLEAdvertiser
+import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Streetpass.StreetPassWorker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -36,7 +37,7 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
     override val coroutineContext: CoroutineContext
         get() = Dispatchers.Main + job
 
-    var worker: Worker? = null
+    var worker: StreetPassWorker? = null
 
     //streetpassreceiver, bluetoothstatusreceiver, statusreceiver
 
@@ -55,7 +56,7 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
         Log.d("BTMonitoringService", "Creating Bluetooth Monitoring Service")
         serviceUUID = UUID.fromString(getString(R.string.ble_uuid))
 
-        worker = Worker(this.applicationContext)
+        worker = StreetPassWorker(this.applicationContext)
 
         //retrieve temporary id here and save it as broadcast message
     }

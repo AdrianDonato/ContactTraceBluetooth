@@ -1,19 +1,20 @@
-package com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool
+package com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Streetpass
 
-import android.app.Application
 import android.bluetooth.*
 import android.content.Context
 import android.content.res.Resources
 import android.os.Handler
 import android.os.Looper
-import android.provider.Settings.Global.getString
 import android.util.Log
+import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.BlacklistEntry
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Protocol.Bluetrace
+import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.R
+import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Work
 import java.util.*
 import java.util.concurrent.PriorityBlockingQueue
 import kotlin.properties.Delegates
 
-class Worker (val context: Context){
+class StreetPassWorker (val context: Context){
 
     //UUIDs used for the bluetooth service and characteristic
     private lateinit var serviceUUID: UUID
@@ -51,7 +52,7 @@ class Worker (val context: Context){
         blacklistHandler = Handler(Looper.getMainLooper())
     }
     //work timeout listener
-    val onWorkTimeoutListener = object: Work.OnWorkTimeoutListener{
+    val onWorkTimeoutListener = object: Work.OnWorkTimeoutListener {
         override fun onWorkTimeout(work: Work) {
             if(!isCurrentlyWorkedOn(work.device.address)){
                 Log.w("WorkTimeoutListener", "No longer being worked on.")

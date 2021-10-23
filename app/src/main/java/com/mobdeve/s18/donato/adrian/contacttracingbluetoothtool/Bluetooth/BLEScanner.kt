@@ -9,6 +9,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.ParcelUuid
 import android.util.Log
+import androidx.appcompat.app.ActionBarDrawerToggle
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.ConnectablePeripheral
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.R
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Work
@@ -17,78 +18,53 @@ import kotlin.properties.Delegates
 
 class BLEScanner constructor(context: Context, val uuid: String, reportDelay: Long){
 
-    private var serviceUUID: UUID
+    private var serviceUUID: String by Delegates.notNull()
     private var context: Context by Delegates.notNull()
+    private var scanCallback: ScanCallback? = null
     private var reportDelay: Long by Delegates.notNull()
-    var scannerCount = 0
-    val pUuid = ParcelUuid(UUID.fromString(uuid))
-    private var bleScanner: BluetoothLeScanner? = BluetoothAdapter.getDefaultAdapter().bluetoothLeScanner
 
-    fun isScanning(): Boolean {
-        return scannerCount > 0
-    }
-
-    private val scanSettings = ScanSettings.Builder()
-            .setScanMode(ScanSettings.SCAN_MODE_LOW_POWER)
-            .setReportDelay(0)
-            .build()
-
-    private val scanHandler = Handler(Looper.getMainLooper())
-    private val infiniteScanning = false
+    private var scanner: BluetoothLeScanner? = BluetoothAdapter.getDefaultAdapter().bluetoothLeScanner
 
     init{
-        serviceUUID = UUID.fromString(Resources.getSystem().getString(R.string.ble_uuid))
+        this.serviceUUID = uuid
+        this.context = context
+        this.reportDelay = reportDelay
     }
 
-    private fun startBleScan(){
+    fun startScan(scanCallback: ScanCallback){
         val filter = ScanFilter.Builder().setServiceUuid(
-                    ParcelUuid(UUID.fromString(Resources.getSystem().getString(R.string.ble_uuid)))
-            ).build()
+                ParcelUuid(UUID.fromString(serviceUUID))
+        ).build()
 
-            val filters: ArrayList<ScanFilter> = ArrayList()
-            filters.add(filter)
+        val filters: ArrayList<ScanFilter> = ArrayList()
+        filters.add(filter)
 
-            bleScanner = bleScanner ?: BluetoothAdapter.getDefaultAdapter().bluetoothLeScanner
-            bleScanner?.startScan(filters, scanSettings, scanCallback)
+        val scanSettings = ScanSettings.Builder()
+                .setScanMode(ScanSettings.SCAN_MODE_LOW_POWER)
+                .setReportDelay(0)
+                .build()
+        this.scanCallback = scanCallback
 
-            if(!infiniteScanning){
-                scanHandler.postDelayed({stopBleScan()}, 8000)
-            }
-
-        }
-    //stops scanning of ble devices
-    private fun stopBleScan(){
-        bleScanner?.stopScan(scanCallback)
+        scanner = scanner ?: BluetoothAdapter.getDefaultAdapter().bluetoothLeScanner
+        scanner?.startScan(filters, scanSettings, scanCallback)
     }
 
-    private val scanCallback = object : ScanCallback() {
-        //processing of scan result (get rssi, id, etc here?)
-        private fun processScanResult(scanResult: ScanResult?){
-            scanResult?.let{ result->
-                Log.w("onScanResult", "Entered onScanResult")
-                Log.w("onScanResult", "Scan Result: ${result.toString()}")
-                var rssi = result.rssi
-                val device = result.device
-                var txPower: Int?= null
+    fun flush(){
+        scanCallback?.let {
+            scanner?.flushPendingScanResults(scanCallback)
+        }
+    }
 
-                if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O){
-                    txPower = result.txPower
-                    Log.w("onScanResult", "txPower = ${txPower}")
-                    if(txPower == 127){
-                        txPower = null
-                    }
-                }
-                var connectable = ConnectablePeripheral("Manufacturer Data", txPower, rssi)
-                // Utils.broadcastDeviceScanned(context, device, connectable)
+    fun stopScan(){
+        try {
+            if(scanCallback != null
+                    //&& Utils.isBluetoothAvailable()
+            ){
+                scanner?.stopScan(scanCallback)
+                Log.w("BLEScanner", "Stopped Scan")
             }
-        }
-        override fun onScanResult(callbackType: Int, result: ScanResult) {
-            super.onScanResult(callbackType, result)
-            processScanResult(result)
-        }
-
-        override fun onScanFailed(errorCode: Int) {
-            Log.e( "ScanCallback", "onScanFailed: code $errorCode")
+        }catch (e: Throwable){
+            Log.e("BLEScanner", "unable to stop scanning - callback null or bluetooth off? : ${e.localizedMessage}")
         }
     }
 
