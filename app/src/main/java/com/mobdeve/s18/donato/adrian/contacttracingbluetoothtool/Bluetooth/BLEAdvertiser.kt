@@ -11,6 +11,7 @@ import android.os.Looper
 
 import android.os.ParcelUuid
 import android.util.Log
+import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.BluetoothMonitoringService.Companion.infiniteAdvertising
 import java.nio.charset.Charset
 import java.util.*
 import kotlin.properties.Delegates
@@ -19,6 +20,10 @@ import kotlin.properties.Delegates
 class BLEAdvertiser constructor(val serviceUUID: String) {
     private var advertiser: BluetoothLeAdvertiser? = BluetoothAdapter.getDefaultAdapter().bluetoothLeAdvertiser
     private var charLength = 3
+    var stopRunnable: Runnable = Runnable{
+        Log.d("BLEAdvertiser", "Advertising Stopped")
+        stopAdvertising()
+    }
 
     private var callback: AdvertiseCallback = object: AdvertiseCallback(){
             override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
@@ -71,11 +76,10 @@ class BLEAdvertiser constructor(val serviceUUID: String) {
             .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_POWER)
             .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
             .setConnectable(true)
-            //.setTimeout(0)
+            .setTimeout(0)
             .build()
-    var advTxPower = settings.txPowerLevel
 
-    var pUuid: ParcelUuid by Delegates.notNull()
+    val pUuid = ParcelUuid(UUID.fromString(serviceUUID))
 
     var data: AdvertiseData? = null
     var scanResponseData: AdvertiseData? = null
@@ -89,7 +93,7 @@ class BLEAdvertiser constructor(val serviceUUID: String) {
                 .setIncludeDeviceName(false)
                 .setIncludeTxPowerLevel(true)
                 .addServiceUuid(pUuid)
-                //.addServiceData(pUuid, "Data".toByteArray(Charset.forName("UTF-8")))
+                .addManufacturerData(1023, serviceDataByteArray)
                 .build()
         scanResponseData = AdvertiseData.Builder().addServiceUuid(pUuid).build()
         try {
@@ -101,12 +105,12 @@ class BLEAdvertiser constructor(val serviceUUID: String) {
             Log.e("BLEAdvertiser", "Failed to start advertising legacy: ${e.message}")
         }
 
-        /*
+
         if (!infiniteAdvertising) {
             handler.removeCallbacksAndMessages(stopRunnable)
             handler.postDelayed(stopRunnable, timeoutInMillis)
         }
-         */
+
     }
 
 

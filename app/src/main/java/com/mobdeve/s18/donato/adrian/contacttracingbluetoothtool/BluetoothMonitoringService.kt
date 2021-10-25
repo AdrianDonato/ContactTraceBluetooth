@@ -15,14 +15,16 @@ import android.os.IBinder
 import android.os.PowerManager
 import android.util.Log
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
-import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Bluetooth.ACTION_RECEIVED_STATUS
-import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Bluetooth.BLEAdvertiser
-import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Bluetooth.STATUS
+import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Bluetooth.*
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Status.Status
+import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Streetpass.StreetPassScanner
+import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Streetpass.StreetPassServer
+import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Streetpass.StreetPassWorker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import pub.devrel.easypermissions.EasyPermissions
+import java.lang.ref.WeakReference
 import java.util.*
 import kotlin.coroutines.CoroutineContext
 
@@ -30,8 +32,8 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
 
     private var mNotifManager: NotificationManager? = null
 
-    //streetpass scanner
-    //streetpass server
+    private var streetPassServer: StreetPassServer? = null
+    private var streetPassScanner: StreetPassScanner? = null
     private var bleAdvertiser: BLEAdvertiser? = null
 
     private lateinit var commandHandler: CommandHandler
@@ -46,7 +48,7 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
 
     private var notificationShown: NOTIFICATION_STATE? = null
 
-    //streetpassreceiver, bluetoothstatusreceiver, statusreceiver
+    private val streetPassReceiver = StreetPassReceiver()
     private val bluetoothStatusReceiver = BluetoothStatusReceiver()
     private val statusReceiver = StatusReceiver()
 
@@ -62,6 +64,8 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
     fun setup(){
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
 
+        commandHandler = CommandHandler(WeakReference(this))
+
         Log.d("BTMonitoringService", "Creating Bluetooth Monitoring Service")
         serviceUUID = UUID.fromString(getString(R.string.ble_uuid))
 
@@ -74,14 +78,23 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
     }
 
     fun teardown(){
+        streetPassServer?.tearDown()
+        streetPassServer = null
 
+        streetPassScanner?.stopScan()
+        streetPassScanner = null
+
+        commandHandler.removeCallbacksAndMessages(null)
+
+        Utils.cancelNextScan(this.applicationContext)
+        Utils.cancelNextAdvertise(this.applicationContext)
+        Utils.cancelBMUpdateCheck(this.applicationContext)
     }
 
     private fun registerReceivers() {
-        /*
         val recordAvailableFilter = IntentFilter(ACTION_RECEIVED_STREETPASS)
         localBroadcastManager.registerReceiver(streetPassReceiver, recordAvailableFilter)
-        */
+
         val statusReceivedFilter = IntentFilter(ACTION_RECEIVED_STATUS)
         localBroadcastManager.registerReceiver(statusReceiver, statusReceivedFilter)
 
@@ -93,8 +106,12 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
 
     private fun unregisterReceivers(){
         //use try catch in case receivers were never registered in the first place
+        try{
+            localBroadcastManager.unregisterReceiver(streetPassReceiver)
+        } catch (e: Throwable){
+            Log.w("BTMonitoringService", "Error unregistering streetpass receiver: ${e.localizedMessage}")
+        }
 
-        //streetpass receiver
         try{
             localBroadcastManager.unregisterReceiver(statusReceiver)
         } catch (e: Throwable){
@@ -126,7 +143,15 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
 
     private fun notifyLackingThings(override: Boolean = false){
         if(notificationShown != NOTIFICATION_STATE.LACKING_THINGS || override){
+            //notificationTemplate
+            notificationShown = NOTIFICATION_STATE.LACKING_THINGS
+        }
+    }
 
+    private fun notifyRunning(override: Boolean = false){
+        if (notificationShown != NOTIFICATION_STATE.RUNNING || override) {
+            //notificationTemplate
+            notificationShown = NOTIFICATION_STATE.RUNNING
         }
     }
 
@@ -161,8 +186,11 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
         val intent = Intent(this.applicationContext, RequestFileWritePermission::class.java)
         intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
         startActivity(intent)
-    }*/
+    }
+    */
 
+    //To do - perform user login check function
+    //private fun performUserLoginCheck()
 
     //checks for permissions + scanner/advertiser schedule
     private fun performHealthCheck(){
@@ -170,12 +198,12 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
 
         if(!isBluetoothEnabled() || !hasLocPermissions()){
             Log.i("BTMonitoringService", "No location permissions")
-            //notifylackingthings
+            notifyLackingThings()
             return
         }
-        //notifyRunning
 
-        //setupService
+        notifyRunning()
+        setupService()
 
         //check if a scan is scheduled
         if(!infiniteScanning){
@@ -235,9 +263,15 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
 
     private fun startScan(){
         if(isBluetoothEnabled()){
-
+            streetPassScanner?.let { scanner ->
+                if(!scanner.isScanning()){
+                    scanner.startScan()
+                } else {
+                    Log.w("BTMonitoringService", "startScan - already scanning")
+                }
+            }
         } else {
-            Log.w("BTMonitoringService", "Unable to start scan, BT is off")
+            Log.w("BTMonitoringService", "startScan - unable to start scan, BT is off")
         }
     }
 
@@ -252,7 +286,14 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
     }
 
     private fun setupScanner(){
+        streetPassScanner = streetPassScanner ?: StreetPassScanner(this, serviceUUID.toString(), scanDuration)
+    }
 
+    private fun setupService(){
+        streetPassServer = streetPassServer ?: StreetPassServer(this.applicationContext, serviceUUID.toString())
+        setupScanner()
+        setupAdvertiser()
+        Log.i("BTMonitoringService", "Services setup")
     }
 
     private fun setupCycles(){
@@ -260,6 +301,30 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
         commandHandler.scheduleNextScan(0)
         //setup advertising cycle
         commandHandler.scheduleNextAdvertise(0)
+        Log.i("BTMonitoringService", "Cycles are set up")
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startID: Int): Int {
+        //check for permissions
+        if(!isBluetoothEnabled() || !hasLocPermissions()){
+            Log.i("BTMonitoringService", "No location permissions")
+            Log.i("BTMonitoringService", "BT enable: ${isBluetoothEnabled()}, " +
+                    "Loc perm: ${hasLocPermissions()}")
+            notifyLackingThings()
+            return START_STICKY
+        }
+
+        intent?.let{
+            val cmd = intent.getIntExtra(COMMAND_KEY, Command.INVALID.index)
+            runService(Command.findByValue(cmd))
+            return START_STICKY
+        }
+
+        if(intent == null){
+            Log.w("BTMonitoringService", "onStartCommand - nothing on intent?")
+            commandHandler.startBluetoothMonitoringService()
+        }
+        return START_STICKY
     }
 
     //runs services depending on which command is used
@@ -272,29 +337,55 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
             Log.i("BTMonitoringService", "No location permissions")
             Log.i("BTMonitoringService", "BT enable: ${isBluetoothEnabled()}, " +
                     "Loc perm: ${hasLocPermissions()}")
-            //notifylackingthings
+            notifyLackingThings()
             return
         }
 
-        //notifyRunning
+        notifyRunning()
         when(cmd){
             Command.ACTION_START -> {
-
+                setupService()
+                Utils.scheduleNextHealthCheck(this.applicationContext, healthCheckInterval)
+                Utils.scheduleBMUpdateCheck(this.applicationContext, bmCheckInterval)
+                //utils purge interval
+                actionStart()
             }
 
             Command.ACTION_SCAN -> {
+                Log.d("BTMonitoringService", "runService - Entered ACTION_SCAN")
                 scheduleScan()
+                if(doWork){
+                    actionScan()
+                }
+
+            }
+
+            Command.ACTION_ADVERTISE -> {
+                Log.d("BTMonitoringService", "runService - Entered ACTION_ADVERTISE")
+                scheduleAdvertisement()
                 if(doWork){
                     actionAdvertise()
                 }
             }
 
             Command.ACTION_UPDATE_BM -> {
-
+                Utils.scheduleBMUpdateCheck(this.applicationContext, bmCheckInterval)
+                actionUpdateBM()
             }
 
             Command.ACTION_STOP -> {
+                actionStop()
+            }
 
+            Command.ACTION_SELF_CHECK -> {
+                Utils.scheduleNextHealthCheck(this.applicationContext, healthCheckInterval)
+                if(doWork){
+                    actionHealthCheck()
+                }
+            }
+
+            Command.ACTION_PURGE -> {
+                //actionPurge
             }
 
             else -> {
@@ -304,6 +395,23 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
     }
 
     //ACTIONS
+
+    //update broadcast message (temporary ID) here
+    private fun actionUpdateBM(){
+        broadcastMessage = (0..100).random().toString()
+        //To do - TempIDManager
+    }
+
+    private fun actionScan(){
+        //To do - integrate tempIDManager
+        performScan()
+    }
+
+    private fun actionStart(){
+        //To do - integrate tempIDManager
+        setupCycles()
+    }
+
     private fun actionStop(){
         stopForeground(true)
         stopSelf()
@@ -314,15 +422,22 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
         performHealthCheck()
     }
 
-    //TEMP ID MANAGER REQUIRED
-    private fun actionUpateBM(){
-        //get new temp ID
-    }
-
     private fun stopService(){
-        //terminate connections worker
+        teardown()
+        unregisterReceivers()
+
+        worker?.terminateConnections()
+        worker?.unregisterReceivers()
 
         job.cancel()
+    }
+
+    //stop bluetooth monitoring service upon destroying
+    override fun onDestroy() {
+        super.onDestroy()
+        Log.i("BTMonitoringService", "onDestroy - Stopping bluetooth monitoring...")
+        stopService()
+        Log.i("BTMonitoringService", "onDestroy - Bluetooth monitoring service destroyed")
     }
 
     //BROADCAST RECEIVERS
@@ -336,7 +451,7 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
                     when(state){
                         BluetoothAdapter.STATE_TURNING_OFF -> {
                             Log.d("BTMonitoringService", "STATE_TURNING_OFF")
-                            //teardown
+                            teardown()
                         }
                         BluetoothAdapter.STATE_OFF -> {
                             Log.d("BTMonitoringService", "STATE_OFF")
@@ -346,7 +461,7 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
                         }
                         BluetoothAdapter.STATE_ON -> {
                             Log.d("BTMonitoringService", "STATE_ON")
-                            //call utils
+                            Utils.startBluetoothMonitoringService(this@BluetoothMonitoringService.applicationContext)
                         }
                     }
                 }
@@ -355,6 +470,16 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
     }
 
     //StreetPassReceiver
+    inner class StreetPassReceiver : BroadcastReceiver(){
+        override fun onReceive(context: Context?, intent: Intent) {
+            if(ACTION_RECEIVED_STREETPASS == intent.action){
+                var connRecord: ConnectionRecord? = intent.getParcelableExtra(STREET_PASS)
+                Log.d("BTMonitoringService", "Streetpass received: $connRecord")
+
+                //To do - check if connrecord is empty then save to db
+            }
+        }
+    }
 
     inner class StatusReceiver : BroadcastReceiver(){
         override fun onReceive(context: Context, intent: Intent) {
@@ -363,7 +488,7 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
                 var statusRecord: Status? = intent.getParcelableExtra(STATUS)
                 Log.d("BTMonitoringService", "Status received: ${statusRecord?.msg}")
 
-                //SAVE TO DATABASE
+                //To do - save to db
             }
         }
     }
@@ -398,6 +523,8 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
 
         val PUSH_NOTIFICATION_ID = 771578
 
+        val COMMAND_KEY = "${BuildConfig.APPLICATION_ID}_CMD"
+
         val PENDING_ACTIVITY = 5
         val PENDING_START = 6
         val PENDING_SCAN_REQ_CODE = 7
@@ -408,6 +535,7 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
         val PENDING_PURGE_CODE = 12
 
         //var broadcastMessage: TemporaryID? = null
+        var broadcastMessage: String? = null
 
         //Advertising and Scanning Stuffs
         val scanDuration: Long = 8000

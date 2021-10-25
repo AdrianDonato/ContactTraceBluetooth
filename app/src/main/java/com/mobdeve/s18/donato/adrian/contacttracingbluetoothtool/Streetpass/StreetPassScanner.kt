@@ -10,6 +10,8 @@ import android.util.Log
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Bluetooth.BLEScanner
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.BluetoothMonitoringService.Companion.infiniteScanning
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.ConnectablePeripheral
+import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Status.Status
+import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Utils
 import kotlin.properties.Delegates
 
 class StreetPassScanner constructor(context: Context, serviceUUIDString: String, private val scanDurationMillis: Long){
@@ -30,6 +32,9 @@ class StreetPassScanner constructor(context: Context, serviceUUIDString: String,
     }
 
     fun startScan(){
+        var statusRecord = Status("Scanning Started")
+        Log.i("StreetPassScanner", "startScan - Scanning Started")
+        Utils.broadcastStatusReceived(context, statusRecord)
         scanner.startScan(scanCallback)
         scannerCount++
 
@@ -42,8 +47,8 @@ class StreetPassScanner constructor(context: Context, serviceUUIDString: String,
 
         //check if successfully scanned before stopping
         if(scannerCount > 0){
-//            var statusRecord = Status("Scanning Stopped")
-//            Utils.broadcastStatusReceived(context, statusRecord)
+            var statusRecord = Status("Scanning Stopped")
+            Utils.broadcastStatusReceived(context, statusRecord)
             scannerCount--
             scanner.stopScan()
         }
@@ -70,11 +75,17 @@ class StreetPassScanner constructor(context: Context, serviceUUIDString: String,
                     }
                 }
 
-                var connectable = ConnectablePeripheral("Manufacturer Data", txPower, rssi)
+                var manuData: ByteArray =
+                        scanResult.scanRecord?.getManufacturerSpecificData(1023) ?: "N.A".toByteArray()
+                var manuString = String(manuData, Charsets.UTF_8)
+
+
+                var connectable = ConnectablePeripheral(manuString, txPower, rssi)
 
                 Log.w("StreetPassScanner", "Scanned ${device.address}")
+                Log.w("StreetPassScanner", "ManuString: $manuString")
 
-                //Utils.broadcastDeviceScanned(context, device, connectable)
+                Utils.broadcastDeviceScanned(context, device, connectable)
             }
         }
 
@@ -85,8 +96,17 @@ class StreetPassScanner constructor(context: Context, serviceUUIDString: String,
 
         override fun onScanFailed(errorCode: Int) {
             super.onScanFailed(errorCode)
-            Log.e( "ScanCallback", "onScanFailed: code $errorCode")
 
+            val reason = when (errorCode) {
+                SCAN_FAILED_ALREADY_STARTED -> "$errorCode - SCAN_FAILED_ALREADY_STARTED"
+                SCAN_FAILED_APPLICATION_REGISTRATION_FAILED -> "$errorCode - SCAN_FAILED_APPLICATION_REGISTRATION_FAILED"
+                SCAN_FAILED_FEATURE_UNSUPPORTED -> "$errorCode - SCAN_FAILED_FEATURE_UNSUPPORTED"
+                SCAN_FAILED_INTERNAL_ERROR -> "$errorCode - SCAN_FAILED_INTERNAL_ERROR"
+                else -> {
+                    "$errorCode - UNDOCUMENTED"
+                }
+            }
+            Log.e("ScanCallback", "onScanFailed; $reason")
             if (scannerCount > 0) {
                 scannerCount--
             }

@@ -193,7 +193,7 @@ class MainActivity : AppCompatActivity() {
                         it.checklist.started.status = true
                         it.checklist.started.timePerformed = System.currentTimeMillis()
 
-                        it.startWork(applicationContext, workGattCallback)
+                        //it.startWork(applicationContext, workGattCallback)
                         var connecting = it.gatt?.connect() ?: false
 
                         if(!connecting){
@@ -268,13 +268,15 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         //init bluetooth manager
-        bluetoothManager = getSystemService(BLUETOOTH_SERVICE) as BluetoothManager
+        //bluetoothManager = getSystemService(BLUETOOTH_SERVICE) as BluetoothManager
 
         scanButton = findViewById(R.id.scan_button)
         advertiseButton = findViewById(R.id.advertise_button)
         yourID = findViewById(R.id.hello)
 
         yourID.setText("Your ID is " + idNum)
+
+        Utils.startBluetoothMonitoringService(this)
 
         setupRecyclerView()
         //serviceUUID = getString(R.string.ble_uuid)

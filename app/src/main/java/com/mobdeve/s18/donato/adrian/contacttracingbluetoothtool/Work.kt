@@ -7,6 +7,7 @@ import android.content.Context
 import android.os.Build
 import android.util.Log
 import com.google.gson.Gson
+import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Streetpass.StreetPassWorker
 import kotlin.properties.Delegates
 
 class Work constructor(
@@ -41,7 +42,7 @@ class Work constructor(
     fun startWork(
             context: Context,
             /* TODO: Parameter should changed to Worker.CentralGattCallback */
-            gattCallback: MainActivity.CentralGattCallback
+            gattCallback: StreetPassWorker.CentralGattCallback
     ){
         if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.M){
             gatt = device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)

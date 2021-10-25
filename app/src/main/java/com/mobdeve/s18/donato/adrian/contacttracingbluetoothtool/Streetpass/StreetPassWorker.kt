@@ -1,18 +1,25 @@
 package com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Streetpass
 
 import android.bluetooth.*
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.res.Resources
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.BlacklistEntry
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.*
+import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Bluetooth.ACTION_DEVICE_PROCESSED
+import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Bluetooth.CONNECTION_DATA
+import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Bluetooth.DEVICE_ADDRESS
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Protocol.Bluetrace
-import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.R
-import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Work
 import java.util.*
 import java.util.concurrent.PriorityBlockingQueue
 import kotlin.properties.Delegates
+
+const val ACTION_DEVICE_SCANNED = "${BuildConfig.APPLICATION_ID}.ACTION_DEVICE_SCANNED"
 
 class StreetPassWorker (val context: Context){
 
@@ -24,18 +31,25 @@ class StreetPassWorker (val context: Context){
     private val workQueue: PriorityBlockingQueue<Work> = PriorityBlockingQueue(5,Collections.reverseOrder<Work>())
     private val blacklist: MutableList<BlacklistEntry> = Collections.synchronizedList(ArrayList())
 
-
     //CHANGE ONCE MAHANAP ANG MAXQUEUETIME SA OPENTRACE
     private var maxQueueTime: Long = 7000
-    private var connTimeout: Long = 6000 //change, imbento lang to for now
+    private var connTimeout: Long = 6000
 
     //handlers
     private lateinit var timeoutHandler: Handler
     private lateinit var queueHandler: Handler
     private lateinit var blacklistHandler: Handler
 
+    //Receivers
+    private val scannedDeviceReceiver = ScannedDeviceReceiver()
+    private val blacklistReceiver = BlacklistReceiver()
+
+    private var localBroadcastManager: LocalBroadcastManager =
+            LocalBroadcastManager.getInstance(context)
+
     //bluetooth service
-    private var bluetoothManager: BluetoothManager by Delegates.notNull()
+    private var bluetoothManager: BluetoothManager
+    = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
 
     //Work
     private var currentWork: Work? = null
@@ -45,21 +59,76 @@ class StreetPassWorker (val context: Context){
         prepare()
     }
     private fun prepare(){
+        val deviceAvailableFilter = IntentFilter(ACTION_DEVICE_SCANNED)
+        localBroadcastManager.registerReceiver(scannedDeviceReceiver, deviceAvailableFilter)
+
+        val deviceProcessedFilter = IntentFilter(ACTION_DEVICE_PROCESSED)
+        localBroadcastManager.registerReceiver(blacklistReceiver, deviceProcessedFilter)
+        /*
         characteristicUUID = UUID.fromString(Resources.getSystem().getString(R.string.ble_characuuid))
         serviceUUID = UUID.fromString(Resources.getSystem().getString(R.string.ble_uuid))
+        */
+        //to do - PALITAN TO DAPAT - kunin from resources
+        characteristicUUID = UUID.fromString("011019d0-8cb6-4804-8b83-1c3348a8940c")
+        serviceUUID = UUID.fromString("61ca2ddb-d5d0-489c-8542-2d1b72e594b4")
+
         timeoutHandler = Handler(Looper.getMainLooper())
         queueHandler = Handler(Looper.getMainLooper())
         blacklistHandler = Handler(Looper.getMainLooper())
+
+        Log.i("StreetPassWorker", "Finished preparing")
     }
     //work timeout listener
     val onWorkTimeoutListener = object: Work.OnWorkTimeoutListener {
         override fun onWorkTimeout(work: Work) {
             if(!isCurrentlyWorkedOn(work.device.address)){
-                Log.w("WorkTimeoutListener", "No longer being worked on.")
+                Log.i("WorkTimeoutListener", "No longer being worked on.")
             }
-            Log.w("WorkTimeoutListener", "Work status: ${work.checklist}")
 
-            //add other logs later - 10/19/21
+            Log.e("WorkTimeoutListener", "Work timed out for ${work.device.address} @ ${work.connectable.rssi} queued for ${work.checklist.started.timePerformed - work.timeStamp}ms")
+
+            Log.e("WorkTimeoutListener", "Work status: ${work.checklist}")
+
+            if(!work.checklist.connected.status){
+                Log.e("WorkTimeoutListener", "No connection formed for ${work.device.address}")
+                if(work.device.address == currentWork?.device?.address){
+                    currentWork = null
+                }
+
+                try{
+                    work.gatt?.close()
+                } catch (e: Exception){
+                    Log.e("WorkTimeoutListener", "Unexpected error trying to close connection for ${work.device.address}!" +
+                            " ${e.localizedMessage}")
+                }
+                finishWork(work)
+            } else if (work.checklist.connected.status && !work.checklist.disconnected.status){
+                if(work.checklist.readCharacteristic.status || work.checklist.writeCharacteristic.status || work.checklist.skipped.status){
+                    Log.e("WorkTimeoutListener", "Connected but did not disconnect in time - ${work.device.address}")
+                    try{
+                        work.gatt?.close()
+                        if(work.gatt == null){
+                            currentWork = null
+                            finishWork(work)
+                        }
+                    } catch (e: Exception){
+                        Log.e("WorkTimeoutListener", "Unexpected error trying to close connection for ${work.device.address}!" +
+                                " ${e.localizedMessage}")
+                    }
+                }
+            } else {
+                Log.e("WorkTimeoutListener", "Connected but did not do anything - ${work.device.address}")
+                try{
+                    work.gatt?.close()
+                    if(work.gatt == null){
+                        currentWork = null
+                        finishWork(work)
+                    }
+                } catch (e: Exception){
+                    Log.e("WorkTimeoutListener", "Unexpected error trying to close connection for ${work.device.address}!" +
+                            " ${e.localizedMessage}")
+                }
+            }
         }
     }
 
@@ -170,18 +239,19 @@ class StreetPassWorker (val context: Context){
             } else {
                 currentWorkOrder.let {
                     val workGattCallback = CentralGattCallback(it)
-                    Log.w("doWork", "Starting work - connecting to device: ${device.address} @ ${it.connectable.rssi} ${System.currentTimeMillis() - it.timeStamp}ms ago")
+                    Log.w("doWork", "Starting work - connecting to device: ${device.address} @ ${it.connectable.rssi} ${it.connectable.transmissionPower} ${System.currentTimeMillis() - it.timeStamp}ms ago")
                     currentWork = it
 
                     try {
                         it.checklist.started.status = true
                         it.checklist.started.timePerformed = System.currentTimeMillis()
 
-                       // it.startWork(context, workGattCallback)
+                        // it.startWork(context, workGattCallback)
+                        it.startWork(context, workGattCallback)
                         var connecting = it.gatt?.connect() ?: false
 
                         if(!connecting){
-                            Log.w("doWork", "Hala, not connecting! Moving on to next work")
+                            Log.w("doWork", "Hala, not connecting! Moving on to next work: Conn status - $connecting")
                             currentWork = null
                             doWork()
                             return
@@ -216,7 +286,9 @@ class StreetPassWorker (val context: Context){
             return
         }
 
-        //work.isCriticalsCompleted
+        if(work.isCriticalsCompleted()){
+            Utils.broadcastDeviceProcessed(context, work.device.address)
+        }
 
         Log.w("finishWork", "Work on ${work.device.address} stopped in ${work.checklist.disconnected.timePerformed}")
         Log.w("finishWork", "Work on ${work.device.address} completed? ") //complete this log
@@ -231,20 +303,6 @@ class StreetPassWorker (val context: Context){
                 BluetoothProfile.GATT, intArrayOf(BluetoothProfile.STATE_CONNECTED)
         )
         return connectedDevices.contains(device)
-    }
-
-    fun terminateConnections() {
-        Log.w("terminateConnections", "Cleaning up worker.")
-
-        currentWork?.gatt?.disconnect()
-        currentWork = null
-
-        timeoutHandler.removeCallbacksAndMessages(null)
-        queueHandler.removeCallbacksAndMessages(null)
-        blacklistHandler.removeCallbacksAndMessages(null)
-
-        workQueue.clear()
-        blacklist.clear()
     }
 
     inner class CentralGattCallback(val work: Work): BluetoothGattCallback(){
@@ -347,15 +405,7 @@ class StreetPassWorker (val context: Context){
                         val connectionRecord = bluetraceImplementation.central.processReadRequestDataReceived(
                                 dataRead = dataBytes, peripheralAddress = work.device.address, rssi = work.connectable.rssi, txPower = work.connectable.transmissionPower
                         )
-
-                        //ADD TO BLACKLIST
-                        Log.w("CentralGattCallback", "Adding to Blacklist: ${work.device.address}")
-                        val entry = BlacklistEntry(work.device.address, System.currentTimeMillis())
-                        blacklist.add(entry)
-                        blacklistHandler.postDelayed({
-                            Log.w("CentralGattCallback", "Blacklist for ${entry.uniqueIdentifier} removed?: ${blacklist.remove(entry)}")
-                        }, 100000)
-
+                        //add to blacklist?
                     } catch (e: Throwable) {
                         Log.w("CentralGattCallback", "Failed to process read payload - ${e.message}")
                     }
@@ -397,4 +447,73 @@ class StreetPassWorker (val context: Context){
         }
     }
 
+    //ends connections
+    fun terminateConnections() {
+        Log.w("terminateConnections", "Cleaning up worker.")
+
+        currentWork?.gatt?.disconnect()
+        currentWork = null
+
+        timeoutHandler.removeCallbacksAndMessages(null)
+        queueHandler.removeCallbacksAndMessages(null)
+        blacklistHandler.removeCallbacksAndMessages(null)
+
+        workQueue.clear()
+        blacklist.clear()
+    }
+
+    //RECEIVERS
+    fun unregisterReceivers(){
+        try{
+            localBroadcastManager.unregisterReceiver(blacklistReceiver)
+        } catch (e: Throwable){
+            Log.e("UnregisterReceivers", "Unable to unregister blacklistReceiver!: ${e.localizedMessage}")
+        }
+
+        try{
+            localBroadcastManager.unregisterReceiver(scannedDeviceReceiver)
+        } catch (e: Throwable){
+            Log.e("UnregisterReceivers", "Unable to unregister scannedDeviceReceiver!: ${e.localizedMessage}")
+        }
+    }
+
+    inner class BlacklistReceiver : BroadcastReceiver(){
+        override fun onReceive(context: Context, intent: Intent) {
+            if(ACTION_DEVICE_PROCESSED == intent.action){
+                val deviceAddress = intent.getStringExtra(DEVICE_ADDRESS)
+                Log.d("BlacklistReceiver", "Adding $deviceAddress to blacklist")
+                val entry = BlacklistEntry(deviceAddress.toString(), System.currentTimeMillis())
+                blacklist.add(entry)
+                blacklistHandler.postDelayed({
+                    Log.w("CentralGattCallback", "Blacklist for ${entry.uniqueIdentifier} removed?: ${blacklist.remove(entry)}")
+                }, 100000)
+            }
+        }
+    }
+
+    inner class ScannedDeviceReceiver : BroadcastReceiver(){
+        override fun onReceive(context: Context?, intent: Intent?) {
+            intent?.let {
+                if (ACTION_DEVICE_SCANNED == intent.action) {
+                    val bluetoothDevice: BluetoothDevice? =
+                            intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                    val connectable: ConnectablePeripheral? =
+                            intent.getParcelableExtra(CONNECTION_DATA)
+
+                    //check if device and connectable are present (thru boolean)
+                    val devicePresent = bluetoothDevice != null
+                    val connectablePresent = connectable != null
+                    Log.i("ScannedDeviceReceiver", "Device received: ${bluetoothDevice?.address}")
+                    bluetoothDevice?.let {
+                        connectable?.let {
+                            val work = Work(bluetoothDevice, connectable, onWorkTimeoutListener)
+                            if(addWork(work)){
+                                doWork()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
