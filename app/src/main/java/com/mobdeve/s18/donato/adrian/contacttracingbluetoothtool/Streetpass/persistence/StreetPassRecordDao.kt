@@ -4,6 +4,7 @@ import androidx.lifecycle.LiveData
 import androidx.room.*
 import androidx.sqlite.db.SupportSQLiteQuery
 
+//Interface for accessing data from record_table
 @Dao
 interface StreetPassRecordDao {
     @Query("SELECT * from record_table ORDER BY timestamp ASC")

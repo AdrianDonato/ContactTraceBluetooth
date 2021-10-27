@@ -2,6 +2,7 @@ package com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Streetpass.per
 
 import android.content.Context
 
+//
 class StreetPassRecordStorage (val context: Context){
     val recordDao = StreetPassRecordDatabase.getDatabase(context).recordDao()
 

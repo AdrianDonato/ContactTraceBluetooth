@@ -3,6 +3,7 @@ package com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Status.persist
 import android.content.Context
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Streetpass.persistence.StreetPassRecordDatabase
 
+//Calls statusDao
 class StatusRecordStorage(val context: Context) {
     val statusDao = StreetPassRecordDatabase.getDatabase(context).statusDao()
 

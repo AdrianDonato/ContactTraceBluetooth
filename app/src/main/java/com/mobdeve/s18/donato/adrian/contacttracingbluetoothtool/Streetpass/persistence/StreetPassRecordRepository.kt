@@ -2,6 +2,7 @@ package com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Streetpass.per
 
 import androidx.lifecycle.LiveData
 
+//Comment
 class StreetPassRecordRepository (private val recordDao: StreetPassRecordDao) {
     val allRecords: LiveData<List<StreetPassRecord>> = recordDao.getRecords()
 

@@ -4,7 +4,7 @@ import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
-
+//Entity for StreetPassRecord
 @Entity(tableName = "record_table")
 class StreetPassRecord constructor(
         @ColumnInfo(name = "v")

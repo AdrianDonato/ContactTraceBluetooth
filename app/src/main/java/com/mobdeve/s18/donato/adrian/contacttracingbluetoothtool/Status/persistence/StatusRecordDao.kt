@@ -4,6 +4,7 @@ import androidx.lifecycle.LiveData
 import androidx.room.*
 import androidx.sqlite.db.SupportSQLiteQuery
 
+//Interface for accessing data from status_table
 @Dao
 interface StatusRecordDao {
     @Query("SELECT * from status_table ORDER BY timestamp ASC")

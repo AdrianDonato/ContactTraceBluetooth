@@ -8,6 +8,7 @@ import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Status.persiste
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Status.persistence.StatusRecordDao
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Streetpass.persistence.StreetPassRecord
 
+//Database for status and streetpass records
 @Database(
         entities = arrayOf(StreetPassRecord::class, StatusRecord::class),
         version = 1,
