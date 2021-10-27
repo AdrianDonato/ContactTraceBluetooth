@@ -17,12 +17,17 @@ import android.util.Log
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Bluetooth.*
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Status.Status
+import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Status.persistence.StatusRecord
+import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Status.persistence.StatusRecordStorage
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Streetpass.StreetPassScanner
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Streetpass.StreetPassServer
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Streetpass.StreetPassWorker
+import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Streetpass.persistence.StreetPassRecord
+import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Streetpass.persistence.StreetPassRecordStorage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import pub.devrel.easypermissions.EasyPermissions
 import java.lang.ref.WeakReference
 import java.util.*
@@ -35,6 +40,10 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
     private var streetPassServer: StreetPassServer? = null
     private var streetPassScanner: StreetPassScanner? = null
     private var bleAdvertiser: BLEAdvertiser? = null
+
+    //persistence
+    private lateinit var streetPassRecordStorage: StreetPassRecordStorage
+    private lateinit var statusRecordStorage: StatusRecordStorage
 
     private lateinit var commandHandler: CommandHandler
     private lateinit var localBroadcastManager: LocalBroadcastManager
@@ -73,6 +82,10 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
 
         unregisterReceivers()
         registerReceivers()
+
+        //persistence
+        streetPassRecordStorage = StreetPassRecordStorage(this.applicationContext)
+        statusRecordStorage = StatusRecordStorage(this.applicationContext)
 
         //retrieve temporary id here and save it as broadcast message
     }
@@ -477,6 +490,23 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
                 Log.d("BTMonitoringService", "Streetpass received: $connRecord")
 
                 //To do - check if connrecord is empty then save to db
+                if(connRecord?.msg != null){
+                    var receivedMsg = connRecord.msg
+                    if(receivedMsg.isNotEmpty()){
+                        val record = StreetPassRecord(
+                                v = connRecord.version,
+                                msg = connRecord.msg,
+                                modelP = connRecord.peripheral.modelP,
+                                modelC = connRecord.central.modelC,
+                                rssi = connRecord.rssi,
+                                txPower = connRecord.txPower
+                        )
+                        launch {
+                            Log.d("BTMonitoringService", "StreetpassReceiver - Saving record: ${Utils.getDate(record.timestamp)}")
+                            streetPassRecordStorage.saveRecord(record)
+                        }
+                    }
+                }
             }
         }
     }
@@ -489,6 +519,15 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
                 Log.d("BTMonitoringService", "Status received: ${statusRecord?.msg}")
 
                 //To do - save to db
+                if(statusRecord != null){
+                    val recStatusRecord = StatusRecord(statusRecord.msg)
+                    if(recStatusRecord.msg.isNotEmpty()){
+                        launch {
+                            statusRecordStorage.saveRecord(recStatusRecord)
+                            Log.d("BTMonitoringService", "Saving status record")
+                        }
+                    }
+                }
             }
         }
     }

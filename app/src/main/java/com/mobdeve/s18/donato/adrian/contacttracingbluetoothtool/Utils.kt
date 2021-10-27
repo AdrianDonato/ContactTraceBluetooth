@@ -70,6 +70,11 @@ object Utils {
         LocalBroadcastManager.getInstance(context).sendBroadcast(intent)
     }
 
+    fun broadcastStreetPassReceived(context: Context, streetpass: ConnectionRecord) {
+        val intent = Intent(ACTION_RECEIVED_STREETPASS)
+        intent.putExtra(STREET_PASS, streetpass)
+        LocalBroadcastManager.getInstance(context).sendBroadcast(intent)
+    }
 
 
     //SCHEDULING

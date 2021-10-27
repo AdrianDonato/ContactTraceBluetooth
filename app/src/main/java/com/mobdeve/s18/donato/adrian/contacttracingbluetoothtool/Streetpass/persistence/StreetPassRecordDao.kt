@@ -20,12 +20,12 @@ interface StreetPassRecordDao {
     fun nukeDb()
 
     @Query("DELETE FROM record_table WHERE timestamp < :before")
-    suspend fun purgeOldRecords(before: Long)
+    suspend  fun purgeOldRecords(before: Long)
 
     @RawQuery
     fun getRecordsViaQuery(query: SupportSQLiteQuery): List<StreetPassRecord>
 
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insert(record: StreetPassRecord)
+    /*suspend */fun insert(record: StreetPassRecord)
 }

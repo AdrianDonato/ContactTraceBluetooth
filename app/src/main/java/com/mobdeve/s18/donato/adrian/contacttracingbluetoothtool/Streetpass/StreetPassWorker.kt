@@ -14,6 +14,7 @@ import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.*
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Bluetooth.ACTION_DEVICE_PROCESSED
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Bluetooth.CONNECTION_DATA
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Bluetooth.DEVICE_ADDRESS
+import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Bluetooth.STREET_PASS
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Protocol.Bluetrace
 import java.util.*
 import java.util.concurrent.PriorityBlockingQueue
@@ -405,7 +406,11 @@ class StreetPassWorker (val context: Context){
                         val connectionRecord = bluetraceImplementation.central.processReadRequestDataReceived(
                                 dataRead = dataBytes, peripheralAddress = work.device.address, rssi = work.connectable.rssi, txPower = work.connectable.transmissionPower
                         )
-                        //add to blacklist?
+
+                        //broadcast to utils then send to btmonitoring
+                        connectionRecord?.let {
+                            Utils.broadcastStreetPassReceived(context, connectionRecord)
+                        }
                     } catch (e: Throwable) {
                         Log.w("CentralGattCallback", "Failed to process read payload - ${e.message}")
                     }
