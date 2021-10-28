@@ -45,6 +45,7 @@ class V2Peripheral: PeripheralInterface{
             val dataWritten = BluetoothWritePayload.fromPayload(dataReceived)
 
             return ConnectionRecord(version = dataWritten.v,
+                                    msg = dataWritten.id,
                                     peripheral = PeripheralDevice(Build.MODEL, "SELF"),
                                     central = CentralDevice(Build.MODEL, "SELF"),
                                     rssi = dataWritten.rs,
@@ -68,6 +69,7 @@ class V2Central: CentralInterface{
 
             var connectionRecord = ConnectionRecord(
                     version = readData.v,
+                    msg = readData.id,
                     peripheral = peripheral,
                     central =  CentralDevice(Build.MODEL, "SELF"),
                     rssi = rssi,
