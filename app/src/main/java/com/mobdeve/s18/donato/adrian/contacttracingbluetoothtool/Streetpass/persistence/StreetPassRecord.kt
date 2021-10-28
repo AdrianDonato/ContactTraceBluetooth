@@ -12,10 +12,10 @@ class StreetPassRecord constructor(
 
         @ColumnInfo(name = "msg")
         var msg: String,
-
+        /*
         @ColumnInfo(name = "org")
         var org: String,
-
+        */
         @ColumnInfo(name = "modelP")
         val modelP: String,
 

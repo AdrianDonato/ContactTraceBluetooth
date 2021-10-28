@@ -25,6 +25,7 @@ interface StreetPassRecordDao {
     @RawQuery
     fun getRecordsViaQuery(query: SupportSQLiteQuery): List<StreetPassRecord>
 
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     fun insert(record: StreetPassRecord): Long
 }
