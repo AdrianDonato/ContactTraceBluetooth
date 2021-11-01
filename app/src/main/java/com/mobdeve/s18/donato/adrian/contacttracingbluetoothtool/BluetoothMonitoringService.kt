@@ -487,7 +487,7 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
         override fun onReceive(context: Context?, intent: Intent) {
             if(ACTION_RECEIVED_STREETPASS == intent.action){
                 var connRecord: ConnectionRecord? = intent.getParcelableExtra(STREET_PASS)
-                Log.d("BTMonitoringService", "Streetpass received: $connRecord")
+                Log.d("BTMonitoringService", "Streetpass received: ${connRecord.toString()}")
 
                 //To do - check if connrecord is empty then save to db
                 if(connRecord?.msg != null){
@@ -501,6 +501,9 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
                                 rssi = connRecord.rssi,
                                 txPower = connRecord.txPower
                         )
+                        Log.d("BTMonitoringService", "StreetpassReceiver - StreetPassRecord: " +
+                                "{v = ${record.v}, msg = ${record.msg}, modelP = ${record.modelP}, modelC = ${record.modelC}" +
+                                ", rssi = ${record.rssi}, txPower = ${record.txPower}")
                         launch {
                             Log.d("BTMonitoringService", "StreetpassReceiver - Saving record: ${Utils.getDate(record.timestamp)}")
                             streetPassRecordStorage.saveRecord(record)
