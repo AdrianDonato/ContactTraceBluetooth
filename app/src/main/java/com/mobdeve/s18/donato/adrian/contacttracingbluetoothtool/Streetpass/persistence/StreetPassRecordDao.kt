@@ -19,7 +19,7 @@ import androidx.room.OnConflictStrategy
 interface StreetPassRecordDao{
 
     @Query("SELECT * from record_table ORDER BY timestamp ASC")
-   fun getRecords(): LiveData<List<StreetPassRecord>>
+    fun getRecords(): LiveData<List<StreetPassRecord>>
 
     @Query("SELECT * from record_table ORDER BY timestamp DESC LIMIT 1")
     fun getMostRecentRecord(): LiveData<StreetPassRecord?>

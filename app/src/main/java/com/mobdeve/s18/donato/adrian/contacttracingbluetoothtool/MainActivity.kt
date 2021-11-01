@@ -20,6 +20,7 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.LiveData
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
@@ -28,6 +29,9 @@ import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Bluetooth.Bluet
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Bluetooth.BluetoothWritePayload
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Protocol.Bluetrace
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.R
+import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Streetpass.persistence.StreetPassRecord
+import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Streetpass.persistence.StreetPassRecordDatabase
+import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Streetpass.persistence.StreetPassRecordRepository
 import kotlinx.android.synthetic.main.activity_main.*
 import java.nio.charset.Charset
 import java.util.*
@@ -270,6 +274,9 @@ class MainActivity : AppCompatActivity() {
         //init bluetooth manager
         //bluetoothManager = getSystemService(BLUETOOTH_SERVICE) as BluetoothManager
 
+        val recordDao = StreetPassRecordDatabase.getDatabase(this.applicationContext).recordDao()
+
+
         scanButton = findViewById(R.id.scan_button)
         advertiseButton = findViewById(R.id.advertise_button)
         yourID = findViewById(R.id.hello)
@@ -292,14 +299,30 @@ class MainActivity : AppCompatActivity() {
         queueHandler = Handler(Looper.getMainLooper())
         blacklistHandler = Handler(Looper.getMainLooper())
 
-        //isScanning is to check if ble is active
+        //TESTING: FOR RETRIEVING DB RECORDS
         scanButton.setOnClickListener{
+            /*
             if(isScanning) {
                 stopBleScan()
             } else {
                 startBleScan()
                 //startServer()
-            }
+            }*/
+
+            var repo = StreetPassRecordRepository(recordDao)
+            var savedRecords: LiveData<List<StreetPassRecord>> = repo.allRecords
+            savedRecords.observe(this, androidx.lifecycle.Observer { records ->
+                Log.d("DBMainActivity", "Saved Records: ${records.get(0).modelP}, ${records.get(0).rssi}, ${records.get(0).msg}")
+            })
+            Toast.makeText(this.applicationContext, "Clicked", Toast.LENGTH_SHORT).show()
+            /*
+            var savedRecords: LiveData<List<StreetPassRecord>> = recordDao.getRecords()
+            Toast.makeText(this.applicationContext, "Saved records: " +
+                    "${savedRecords.get(0).id}, ${savedRecords.get(0).modelP}, ${savedRecords.get(0).rssi}", Toast.LENGTH_SHORT).show()
+            Log.d("MainActivity", "Saved records: " +
+                    "${savedRecords.get(0).id}, ${savedRecords.get(0).modelP}, ${savedRecords.get(0).rssi}")
+
+             */
         }
         //Add listener to advertise button
         advertiseButton.setOnClickListener{
