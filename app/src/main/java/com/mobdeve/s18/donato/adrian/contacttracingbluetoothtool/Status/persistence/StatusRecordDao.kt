@@ -20,12 +20,12 @@ interface StatusRecordDao {
     fun nukeDb()
 
     @Query("DELETE FROM status_table WHERE timestamp < :before")
-    fun purgeOldRecords(before: Long)
+    suspend fun purgeOldRecords(before: Long)
 
     @RawQuery
     fun getRecordsViaQuery(query: SupportSQLiteQuery): List<StatusRecord>
 
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
-    fun insert(record: StatusRecord)
+    suspend fun insert(record: StatusRecord)
 }
