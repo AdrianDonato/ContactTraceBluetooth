@@ -167,7 +167,8 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
 
     private fun notifyRunning(override: Boolean = false){
         if (notificationShown != NOTIFICATION_STATE.RUNNING || override) {
-            //notificationTemplate
+            var notif = NotificationTemplates.getRunningNotification(this.applicationContext, CHANNEL_ID)
+            startForeground(NOTIFICATION_ID, notif)
             notificationShown = NOTIFICATION_STATE.RUNNING
         }
     }
