@@ -293,6 +293,17 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
         startScan()
     }
 
+    private fun performPurge(){
+        val context = this
+        launch {
+            val before = System.currentTimeMillis() - purgeTTL
+            Log.i("BTMonitoringService", "Performing purge: $before")
+            streetPassRecordStorage.purgeOldRecords(before)
+            statusRecordStorage.purgeOldRecords(before)
+            Preference.putLastPurgeTime(context, System.currentTimeMillis())
+        }
+    }
+
     //SETUPS
     private fun setupAdvertiser(){
         bleAdvertiser = bleAdvertiser ?: BLEAdvertiser(serviceUUID.toString())
@@ -360,7 +371,7 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
                 setupService()
                 Utils.scheduleNextHealthCheck(this.applicationContext, healthCheckInterval)
                 Utils.scheduleBMUpdateCheck(this.applicationContext, bmCheckInterval)
-                //utils purge interval
+                Utils.scheduleRepeatingPurge(this.applicationContext, purgeInterval)
                 actionStart()
             }
 
@@ -398,7 +409,7 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
             }
 
             Command.ACTION_PURGE -> {
-                //actionPurge
+                actionPurge()
             }
 
             else -> {
@@ -420,6 +431,10 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
         performScan()
     }
 
+    private fun actionPurge(){
+        performPurge()
+    }
+
     private fun actionStart(){
         //To do - integrate tempIDManager
         setupCycles()
@@ -432,7 +447,9 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
     }
 
     private fun actionHealthCheck(){
+        //loginCheck
         performHealthCheck()
+        Utils.scheduleRepeatingPurge(this.applicationContext, purgeInterval)
     }
 
     private fun stopService(){

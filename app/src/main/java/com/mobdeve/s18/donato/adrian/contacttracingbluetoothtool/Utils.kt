@@ -10,6 +10,7 @@ import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Bluetooth.*
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.BluetoothMonitoringService.Companion.PENDING_ADVERTISE_REQ_CODE
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.BluetoothMonitoringService.Companion.PENDING_BM_UPDATE
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.BluetoothMonitoringService.Companion.PENDING_HEALTH_CHECK_CODE
+import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.BluetoothMonitoringService.Companion.PENDING_PURGE_CODE
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.BluetoothMonitoringService.Companion.PENDING_SCAN_REQ_CODE
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Status.Status
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Streetpass.ACTION_DEVICE_SCANNED
@@ -112,6 +113,21 @@ object Utils {
                 context,
                 intent,
                 bmCheckInterval
+        )
+    }
+
+    fun scheduleRepeatingPurge(context: Context, intervalMillis: Long) {
+        val nextIntent = Intent(context, BluetoothMonitoringService::class.java)
+        nextIntent.putExtra(
+                BluetoothMonitoringService.COMMAND_KEY,
+                BluetoothMonitoringService.Command.ACTION_PURGE.index
+        )
+
+        Scheduler.scheduleRepeatingServiceIntent(
+                PENDING_PURGE_CODE,
+                context,
+                nextIntent,
+                intervalMillis
         )
     }
 
