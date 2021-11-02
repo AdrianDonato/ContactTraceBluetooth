@@ -65,8 +65,11 @@ class NotificationTemplates {
                             "Open app now",
                             activityPendingIntent
                     )
+                    .setSmallIcon(R.drawable.ic_launcher_foreground)
                     .setContentIntent(activityPendingIntent)
                     .setWhen(System.currentTimeMillis())
+                    .setSound(null)
+                    .setVibrate(null)
 
             return builder.build()
         }

@@ -158,8 +158,7 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
 
     private fun notifyLackingThings(override: Boolean = false){
         if(notificationShown != NOTIFICATION_STATE.LACKING_THINGS || override){
-            var notif =
-                    NotificationTemplates.lackingThingsNotification(this.applicationContext, CHANNEL_ID)
+            var notif = NotificationTemplates.lackingThingsNotification(this.applicationContext, CHANNEL_ID)
             startForeground(NOTIFICATION_ID, notif)
             notificationShown = NOTIFICATION_STATE.LACKING_THINGS
         }
@@ -220,7 +219,7 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
             return
         }
 
-        notifyRunning()
+        notifyRunning(true)
         setupService()
 
         //check if a scan is scheduled
