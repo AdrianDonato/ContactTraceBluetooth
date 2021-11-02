@@ -87,6 +87,8 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
         streetPassRecordStorage = StreetPassRecordStorage(this.applicationContext)
         statusRecordStorage = StatusRecordStorage(this.applicationContext)
 
+        setupNotifications()
+
         //retrieve temporary id here and save it as broadcast message
     }
 
@@ -156,7 +158,9 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
 
     private fun notifyLackingThings(override: Boolean = false){
         if(notificationShown != NOTIFICATION_STATE.LACKING_THINGS || override){
-            //notificationTemplate
+            var notif =
+                    NotificationTemplates.lackingThingsNotification(this.applicationContext, CHANNEL_ID)
+            startForeground(NOTIFICATION_ID, notif)
             notificationShown = NOTIFICATION_STATE.LACKING_THINGS
         }
     }
@@ -211,7 +215,7 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
 
         if(!isBluetoothEnabled() || !hasLocPermissions()){
             Log.i("BTMonitoringService", "No location permissions")
-            notifyLackingThings()
+            notifyLackingThings(true)
             return
         }
 
@@ -481,6 +485,7 @@ class BluetoothMonitoringService: Service(), CoroutineScope{
                     when(state){
                         BluetoothAdapter.STATE_TURNING_OFF -> {
                             Log.d("BTMonitoringService", "STATE_TURNING_OFF")
+                            notifyLackingThings()
                             teardown()
                         }
                         BluetoothAdapter.STATE_OFF -> {
