@@ -14,16 +14,5 @@ class ScanResultListActivity: AppCompatActivity(){
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_scanresultlist)
 
-        val recordDao = StreetPassRecordDatabase.getDatabase(this.applicationContext).recordDao()
-
-
-        var repo = StreetPassRecordRepository(recordDao)
-        var savedRecords: LiveData<List<StreetPassRecord>> = repo.allRecords
-        savedRecords.observe(this, androidx.lifecycle.Observer { records ->
-            if(records.size > 0){
-                //RECORD LIST:
-                //msg, modelc, modelp, rssi, timestamp, v
-            }
-        })
     }
 }

@@ -30,6 +30,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".ContactlistActivity"
+            android:exported="true"/>
+        <activity android:name=".ScanResultListActivity"
+            android:exported="true"/>
+
     </application>
 
 </manifest>
