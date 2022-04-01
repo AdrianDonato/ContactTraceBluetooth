@@ -43,10 +43,12 @@ import kotlin.properties.Delegates
 
 private const val LOCATION_PERMISSION_REQUEST_CODE = 2
 private const val GATT_MAX_MTU_SIZE = 517
+private const val BATTERY_OPTIMISER = 789
 
 class MainActivity : AppCompatActivity() {
     private lateinit var scanButton : Button
     private lateinit var advertiseButton: Button
+    private lateinit var savedRecsButton: Button
     private lateinit var yourID: TextView
     private var serviceUUID: String by Delegates.notNull()
 
@@ -278,6 +280,7 @@ class MainActivity : AppCompatActivity() {
 
 
         scanButton = findViewById(R.id.scan_button)
+        savedRecsButton = findViewById(R.id.saved_records_button)
         advertiseButton = findViewById(R.id.advertise_button)
         yourID = findViewById(R.id.hello)
 
@@ -301,6 +304,8 @@ class MainActivity : AppCompatActivity() {
 
         //TESTING: FOR RETRIEVING DB RECORDS
         scanButton.setOnClickListener{
+
+            //Old scanning functionality - remove soon
             /*
             if(isScanning) {
                 stopBleScan()
@@ -313,17 +318,15 @@ class MainActivity : AppCompatActivity() {
             var savedRecords: LiveData<List<StreetPassRecord>> = repo.allRecords
             savedRecords.observe(this, androidx.lifecycle.Observer { records ->
                 Log.d("DBMainActivity", "Saved Records: ${records.get(0).modelP}, ${records.get(0).rssi}, ${records.get(0).msg}")
+                Toast.makeText(this.applicationContext, "Saved Records: ${records.get(0).modelP}, ${records.get(0).rssi}, ${records.get(0).msg}",
+                    Toast.LENGTH_SHORT).show()
             })
-            Toast.makeText(this.applicationContext, "Clicked", Toast.LENGTH_SHORT).show()
-            /*
-            var savedRecords: LiveData<List<StreetPassRecord>> = recordDao.getRecords()
-            Toast.makeText(this.applicationContext, "Saved records: " +
-                    "${savedRecords.get(0).id}, ${savedRecords.get(0).modelP}, ${savedRecords.get(0).rssi}", Toast.LENGTH_SHORT).show()
-            Log.d("MainActivity", "Saved records: " +
-                    "${savedRecords.get(0).id}, ${savedRecords.get(0).modelP}, ${savedRecords.get(0).rssi}")
-
-             */
         }
+
+        savedRecsButton.setOnClickListener {
+            startActivity(Intent(this, ContactlistActivity::class.java))
+        }
+
         //Add listener to advertise button
         advertiseButton.setOnClickListener{
             if(isAdvertising){

@@ -18,6 +18,7 @@ object Preference {
     private const val LAST_PURGE_TIME = "LAST_PURGE_TIME"
 
     private const val ANNOUNCEMENT = "ANNOUNCEMENT"
+    private const val USERID = "USERID"
 
     fun putHandShakePin(context: Context, value: String) {
         context.getSharedPreferences(PREF_ID, Context.MODE_PRIVATE)
@@ -103,6 +104,16 @@ object Preference {
     fun getAnnouncement(context: Context): String {
         return context.getSharedPreferences(PREF_ID, Context.MODE_PRIVATE)
                 .getString(ANNOUNCEMENT, "") ?: ""
+    }
+
+    fun putUserID(context: Context, announcement: String) {
+        context.getSharedPreferences(PREF_ID, Context.MODE_PRIVATE)
+            .edit().putString(USERID, announcement).apply()
+    }
+
+    fun getUserID(context: Context): String {
+        return context.getSharedPreferences(PREF_ID, Context.MODE_PRIVATE)
+            .getString(USERID, "none") ?: ""
     }
 
     fun putLastPurgeTime(context: Context, lastPurgeTime: Long) {
