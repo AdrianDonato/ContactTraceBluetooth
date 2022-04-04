@@ -4,6 +4,7 @@ import android.bluetooth.*
 import android.content.Context
 import android.util.Log
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Protocol.Bluetrace
+import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Utils
 import java.util.*
 import kotlin.properties.Delegates
 
@@ -166,6 +167,10 @@ class GattServer constructor(val context: Context, val serviceUUIDString: String
                             val bluetraceImplementation = Bluetrace.getImplementation(charUUID)
 
                             val connectionRecord = bluetraceImplementation.peripheral.processWriteRequestDataReceived(data, device.address)
+                            connectionRecord?.let {
+                                Utils.broadcastStreetPassReceived(context, connectionRecord)
+                            }
+
                             Log.w("GattServerCallback", "Entering device.let")
                             try {
                                 val serializedData = BluetoothWritePayload.fromPayload(data)

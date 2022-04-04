@@ -47,7 +47,7 @@ class V2Peripheral: PeripheralInterface{
             return ConnectionRecord(version = dataWritten.v,
                                     msg = dataWritten.id,
                                     peripheral = PeripheralDevice(Build.MODEL, "SELF"),
-                                    central = CentralDevice(Build.MODEL, "SELF"),
+                                    central = CentralDevice(dataWritten.mc, centralAddress),
                                     rssi = dataWritten.rs,
                                     txPower = null
             )

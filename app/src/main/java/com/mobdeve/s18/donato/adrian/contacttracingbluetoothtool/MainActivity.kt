@@ -68,7 +68,11 @@ class MainActivity : AppCompatActivity() {
 
         yourID.setText("Your ID is " + idNum)
 
-        Utils.startBluetoothMonitoringService(this)
+        if(!isLocationPermissionGranted){
+            requestLocationPermission()
+        } else {
+            Utils.startBluetoothMonitoringService(this)
+        }
 
         //TESTING: FOR RETRIEVING DB RECORDS
         scanButton.setOnClickListener{
@@ -83,7 +87,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         savedRecsButton.setOnClickListener {
-            startActivity(Intent(this, ScanResultListActivity::class.java))
+            startActivity(Intent(this, ContactlistActivity::class.java))
         }
     }
 
