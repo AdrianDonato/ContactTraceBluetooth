@@ -7,6 +7,7 @@ import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Bluetooth.Bluet
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.CentralDevice
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.ConnectionRecord
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.PeripheralDevice
+import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.TracerApp
 
 class BluetraceProtocol(
         val versionInt: Int,
@@ -37,7 +38,7 @@ class BluetraceProtocol(
 
 class V2Peripheral: PeripheralInterface{
     override fun prepareReadRequestData(protocolVersion: Int): ByteArray {
-        return BluetoothPayload(v = protocolVersion,"1", PeripheralDevice(Build.MODEL, "SELF"), ).getPayload()
+        return BluetoothPayload(v = protocolVersion,TracerApp.thisDeviceMsg(), PeripheralDevice(Build.MODEL, "SELF"), ).getPayload()
     }
 
     override fun processWriteRequestDataReceived(dataReceived: ByteArray, centralAddress: String): ConnectionRecord? {
@@ -59,7 +60,7 @@ class V2Peripheral: PeripheralInterface{
 }
 class V2Central: CentralInterface{
     override fun prepareWriteRequestData(protocolVersion: Int, rssi: Int, txPower: Int?): ByteArray {
-        return BluetoothWritePayload(v = protocolVersion, id = "1", CentralDevice(Build.MODEL, "SELF"),rs = rssi).getPayload()
+        return BluetoothWritePayload(v = protocolVersion, id = TracerApp.thisDeviceMsg(), CentralDevice(Build.MODEL, "SELF"),rs = rssi).getPayload()
     }
     override fun processReadRequestDataReceived(dataRead: ByteArray, peripheralAddress: String, rssi: Int, txPower: Int?): ConnectionRecord? {
         try{

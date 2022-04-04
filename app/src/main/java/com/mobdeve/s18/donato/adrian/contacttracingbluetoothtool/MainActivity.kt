@@ -60,13 +60,15 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        Preference.putUserID(applicationContext, idNum)
+
         val recordDao = StreetPassRecordDatabase.getDatabase(this.applicationContext).recordDao()
         scanButton = findViewById(R.id.scan_button)
         savedRecsButton = findViewById(R.id.saved_records_button)
         advertiseButton = findViewById(R.id.advertise_button)
         yourID = findViewById(R.id.hello)
 
-        yourID.setText("Your ID is " + idNum)
+        yourID.setText("Your ID is " + TracerApp.thisDeviceMsg())
 
         if(!isLocationPermissionGranted){
             requestLocationPermission()
@@ -146,6 +148,35 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun excludeFromBatteryOptimization() {
+        Log.d("MainActivityLog", "[excludeFromBatteryOptimization] ")
+        val powerManager =
+            this.getSystemService(AppCompatActivity.POWER_SERVICE) as PowerManager
+        val packageName = this.packageName
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val intent =
+                Utils.getBatteryOptimizerExemptionIntent(
+                    packageName
+                )
+
+            if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
+                Log.d("MainActivityLog", "Not on Battery Optimization whitelist")
+                //check if there's any activity that can handle this
+                if (Utils.canHandleIntent(
+                        intent,
+                        packageManager
+                    )
+                ) {
+                    getResult.launch(intent)
+                } else {
+                    Log.d("MainActivityLog", "No way of handling optimizer")
+                }
+            } else {
+                Log.d("MainActivityLog", "On Battery Optimization whitelist")
+            }
+        }
+    }
+
     private fun Activity.requestPermission(permission: String, requestCode: Int) {
         ActivityCompat.requestPermissions(this, arrayOf(permission), requestCode)
     }
@@ -160,7 +191,9 @@ class MainActivity : AppCompatActivity() {
             LOCATION_PERMISSION_REQUEST_CODE -> {
                 if (grantResults.firstOrNull() == PackageManager.PERMISSION_DENIED) {
                     requestLocationPermission()
+                    excludeFromBatteryOptimization()
                 } else {
+                    excludeFromBatteryOptimization()
                     Utils.startBluetoothMonitoringService(this)
                 }
             }

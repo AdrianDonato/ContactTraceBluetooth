@@ -1,14 +1,12 @@
 package com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool
 
+import android.content.Intent
 import android.os.Bundle
 import android.widget.Button
 import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.LiveData
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Streetpass.persistence.StreetPassRecord
-import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Streetpass.persistence.StreetPassRecordDatabase
-import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Streetpass.persistence.StreetPassRecordRepository
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.Streetpass.persistence.StreetPassRecordStorage
 import io.reactivex.Observable
 import io.reactivex.android.schedulers.AndroidSchedulers
@@ -21,16 +19,27 @@ import kotlin.collections.ArrayList
 
 class ContactlistActivity: AppCompatActivity(){
 
-    lateinit var backButton: Button
-
     private var disposableObj: Disposable? = null //used to read SQLite Records
     private lateinit var contactData: ArrayList<ContactRVData>
     private lateinit var rvCloseContacts: RecyclerView
 
+    private lateinit var btnBack: Button
+    private lateinit var btnRefresh: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_contactlist)
+
+        btnBack = findViewById(R.id.btnBack)
+        btnBack.setOnClickListener {
+            startActivity(Intent(this, MainActivity::class.java))
+        }
+
+        btnRefresh = findViewById(R.id.btnRefresh)
+        btnRefresh.setOnClickListener {
+            finish()
+            startActivity(intent)
+        }
 
         //recyclerview setup
         rvCloseContacts = findViewById(R.id.rvCloseContacts)
@@ -70,6 +79,11 @@ class ContactlistActivity: AppCompatActivity(){
                 rvCloseContacts.adapter = ContactRVAdapter(contactData)
             }
         })*/
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        disposableObj?.dispose()
     }
 
     fun getDate(milliSeconds: Long): String {
