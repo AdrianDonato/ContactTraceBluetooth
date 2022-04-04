@@ -50,8 +50,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var savedRecsButton: Button
     private lateinit var yourID: TextView
 
-    //variable to be read in text bluetooth read/write
-    private var idNum = (0..100).random().toString()
+
 
     //bluetooth service
     private var bluetoothManager: BluetoothManager by Delegates.notNull()
@@ -60,6 +59,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        var idNum = (0..100).random().toString()
         Preference.putUserID(applicationContext, idNum)
 
         val recordDao = StreetPassRecordDatabase.getDatabase(this.applicationContext).recordDao()
