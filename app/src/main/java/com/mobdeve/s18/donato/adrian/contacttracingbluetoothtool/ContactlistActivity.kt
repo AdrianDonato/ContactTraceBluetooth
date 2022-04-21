@@ -32,7 +32,7 @@ class ContactlistActivity: AppCompatActivity(){
 
         btnBack = findViewById(R.id.btnBack)
         btnBack.setOnClickListener {
-            startActivity(Intent(this, MainActivity::class.java))
+            finish()
         }
 
         btnRefresh = findViewById(R.id.btnRefresh)
