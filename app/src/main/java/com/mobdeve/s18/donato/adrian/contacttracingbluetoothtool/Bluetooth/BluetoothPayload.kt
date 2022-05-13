@@ -5,10 +5,12 @@ import com.google.gson.GsonBuilder
 import com.mobdeve.s18.donato.adrian.contacttracingbluetoothtool.PeripheralDevice
 import org.apache.commons.text.StringEscapeUtils
 
-class BluetoothPayload (val id: String, peripheral: PeripheralDevice){
+class BluetoothPayload (val v: Int, val id: String, peripheral: PeripheralDevice){
     fun getPayload(): ByteArray{
         return gson.toJson(this).toByteArray(Charsets.UTF_8)
     }
+    val mp = peripheral.modelP
+
     companion object {
         //val gson: Gson
         val gson: Gson = GsonBuilder().disableHtmlEscaping().create()
